@@ -511,11 +511,11 @@ entrada no esta cargada.
 - Envolver la primera lectura del coordinador para cerrar conexion y propagar
   `ConfigEntryNotReady` si el AS1 no responde en setup.
 - Crear `icons.json` y retirar `icon=` de las descripciones Python.
-- Crear `codex.md` como memoria tecnica para futuras sesiones.
+- Crear `docs/AI_CONTEXT.md` como memoria tecnica publica para futuras sesiones.
 - Crear `AUDITORIA_PLATINO_PERSONAL.md` y `quality_scale.yaml`.
 - Documentar que `pymodbus==3.11.2` se mantiene hasta verificar dependencias
   reales en Home Assistant 2026.6.x.
-- Subir la version de la integracion a `3.0.7`.
+- Preparar version publica inicial `1.0.0`.
 
 ### Archivos modificados
 

@@ -16,7 +16,13 @@
 
 - PyModbus: https://pymodbus.readthedocs.io/
 - Local pinned runtime dependency: `pymodbus==3.11.2`
-- SAJ AS1 protocol material: used as local maintainer reference only. Do not redistribute copied manufacturer documents unless their license allows it.
+- Local AS1 protocol reference: `docs/reference/AS1Main control board and display board communication protocol (1).pdf`
+- Local protocol markdown extraction: `docs/reference/host_controller_display_panel_protocol.md`
+- Local PyModbus documentation snapshots:
+  - `docs/reference/Documentacion pymodbus 3.11.2.md`
+  - `docs/reference/Documentacion pymodbus 3.13.0.md`
+
+Only use these files for implementation reference. If a copied vendor/manual document has distribution limits, replace it with a public link or a short citation before broader redistribution.
 
 ## Community references
 

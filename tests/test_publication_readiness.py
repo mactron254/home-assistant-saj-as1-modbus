@@ -27,7 +27,7 @@ def test_public_manifest_urls_and_owner_are_ready() -> None:
     assert manifest["documentation"] == REPO_URL
     assert manifest["issue_tracker"] == f"{REPO_URL}/issues"
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "3.1.3"
+    assert manifest["version"] == "1.0.0"
 
 
 def test_public_readmes_include_disclaimer_and_transport_scope() -> None:
@@ -95,9 +95,6 @@ def test_internal_material_is_excluded_from_public_repository() -> None:
         "docs/evcc/",
         "docs/INFORME_TECNICO_COMPLETO.md",
         "docs/README_CORRECCIONES.md",
-        "docs/reference/AS1Main*.pdf",
-        "docs/reference/Documentacion pymodbus*.md",
-        "docs/reference/host_controller_display_panel_protocol.md",
         "*.log",
         ".env",
     ):
@@ -131,3 +128,26 @@ def test_brand_asset_exists_for_hacs() -> None:
     assert icon.stat().st_size > 0
     assert legacy_icon.exists()
     assert legacy_icon.stat().st_size > 0
+
+
+def test_modbus_references_and_wiki_docs_exist() -> None:
+    """Public docs should include Modbus references and wiki source pages."""
+    reference_files = (
+        "docs/reference/AS1Main control board and display board communication protocol (1).pdf",
+        "docs/reference/host_controller_display_panel_protocol.md",
+        "docs/reference/Documentacion pymodbus 3.11.2.md",
+        "docs/reference/Documentacion pymodbus 3.13.0.md",
+    )
+    wiki_files = (
+        "docs/wiki/Home.md",
+        "docs/wiki/Architecture.md",
+        "docs/wiki/Modbus-Register-Guide.md",
+        "docs/wiki/Adding-Modbus-Sensor.md",
+        "docs/wiki/Release-HACS.md",
+        "docs/wiki/Troubleshooting.md",
+    )
+
+    for file_name in reference_files + wiki_files:
+        path = PROJECT_ROOT / file_name
+        assert path.exists(), file_name
+        assert path.stat().st_size > 0, file_name

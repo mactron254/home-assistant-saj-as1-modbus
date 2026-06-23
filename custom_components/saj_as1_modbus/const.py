@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "saj_as1_modbus"
 DEFAULT_NAME: Final = "SAJ AS1"
-INTEGRATION_VERSION: Final = "3.0.7"
+INTEGRATION_VERSION: Final = "1.0.0"
 
 CONF_DEVICE_ID: Final = "device_id"
 CONF_SCAN_INTERVAL: Final = "scan_interval"  # Legacy key removed during migration.
