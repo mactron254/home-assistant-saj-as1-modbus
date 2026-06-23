@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.1
+
+- Add HACS brand asset inside `custom_components/saj_as1_modbus/brand/icon.png`.
+- Add missing `voluptuous` development dependency for GitHub Actions tests.
+
 ## 3.1.0
 
 - Prepare repository for public GitHub and HACS custom repository use.
