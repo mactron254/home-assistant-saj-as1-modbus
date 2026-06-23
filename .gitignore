@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.venv/
+.codex_deps/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local/private working material
+copia_As1/
+docs/internal/
+docs/emhass/
+docs/evcc/
+docs/INFORME_TECNICO_COMPLETO.md
+docs/README_CORRECCIONES.md
+docs/reference/AS1Main*.pdf
+docs/reference/Documentacion pymodbus*.md
+docs/reference/host_controller_display_panel_protocol.md
+*.log
+*.tmp
+*.bak
+.env
+.env.*

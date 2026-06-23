@@ -1,0 +1,47 @@
+set_profile:
+  name: Configurar perfil SAJ AS1
+  description: Configura modo de usuario y potencias en una sola operación Modbus, pensado para automatizaciones.
+  fields:
+    config_entry_id:
+      name: ID de entrada
+      description: ID de la entrada de configuración. Solo es necesario si hay más de un SAJ AS1 configurado.
+      required: false
+      example: "01KT7C741F6Y97987METK1WX5P"
+      selector:
+        text:
+    charge_power_pct:
+      name: Potencia de carga
+      description: Potencia de carga de la primera franja en porcentaje.
+      required: false
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+          unit_of_measurement: "%"
+    discharge_power_pct:
+      name: Potencia de descarga
+      description: Potencia de descarga de la primera franja en porcentaje.
+      required: false
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+          unit_of_measurement: "%"
+    user_mode:
+      name: Modo de usuario
+      description: Modo de usuario que debe quedar activo tras aplicar el perfil.
+      required: false
+      example: "Horario de Uso"
+      selector:
+        select:
+          options:
+            - "Autoconsumo"
+            - "Horario de Uso"
+            - "Reserva"
+            - "Manual"

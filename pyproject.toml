@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "--strict-markers",
+    "--import-mode=importlib",
+    "-p",
+    "no:debugging",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+ignore_missing_imports = true

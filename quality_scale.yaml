@@ -1,0 +1,76 @@
+rules:
+  action-setup: done
+  appropriate-polling: done
+  brands: done
+  common-modules: done
+  config-flow-test-coverage:
+    status: todo
+    comment: Hay tests estaticos; falta suite con Home Assistant test harness.
+  config-flow: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup:
+    status: exempt
+    comment: Las entidades no registran listeners propios fuera del coordinador.
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow:
+    status: exempt
+    comment: Modbus TCP local no usa credenciales ni tokens que puedan caducar.
+  test-coverage:
+    status: todo
+    comment: Objetivo >95%; pendiente de entorno HA test harness o instalacion core local.
+
+  devices: done
+  diagnostics: done
+  discovery-update-info:
+    status: exempt
+    comment: No hay discovery; la IP del AIO3 se configura manualmente.
+  discovery:
+    status: exempt
+    comment: El AIO3 no anuncia un identificador local fiable para discovery.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: Una entrada representa un unico inversor AS1; no aparecen subdispositivos.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations: done
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues: done
+  stale-devices:
+    status: exempt
+    comment: No hay discovery ni inventario dinamico de dispositivos.
+
+  async-dependency: done
+  inject-websession:
+    status: exempt
+    comment: PyModbus TCP no usa aiohttp/websession.
+  strict-typing:
+    status: todo
+    comment: mypy strict configurado; falta resolver/verificar con stubs reales de HA.
