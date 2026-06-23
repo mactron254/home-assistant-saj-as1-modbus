@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.3
+
+- Add explicit PyModbus development dependency for GitHub Actions tests.
+
 ## 3.1.2
 
 - Add Home Assistant 2026.6.0 to development dependencies so GitHub Actions can import integration modules during tests.

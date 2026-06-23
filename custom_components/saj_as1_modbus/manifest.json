@@ -9,5 +9,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/mactron254/home-assistant-saj-as1-modbus/issues",
   "requirements": ["pymodbus==3.11.2"],
-  "version": "3.1.2"
+  "version": "3.1.3"
 }

@@ -15,7 +15,7 @@ It is designed for local polling through an AIO3/Modbus TCP endpoint. It does **
 - Initial public target: HACS custom repository.
 - Repository: `mactron254/home-assistant-saj-as1-modbus`.
 - Integration domain: `saj_as1_modbus`.
-- Current release target: `v3.1.2`.
+- Current release target: `v3.1.3`.
 
 ## Features
 
