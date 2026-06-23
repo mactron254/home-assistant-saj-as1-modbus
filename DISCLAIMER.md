@@ -6,9 +6,11 @@ This is an unofficial community integration. It is not affiliated with, endorsed
 
 SAJ does not develop, review, validate, or provide support for this integration.
 
-## AI-assisted project
+## AI-generated project
 
-This project was built with AI assistance and community testing. AI-generated or AI-assisted code and documentation can contain mistakes.
+This project was built, documented, reviewed, tested, and maintained using AI-generated workflows.
+
+The code, documentation, technical review, tests, wiki pages, and guides were generated or reviewed with AI. AI-generated engineering work can contain technical mistakes, omissions, unsafe assumptions, or incorrect interpretations of the Modbus protocol.
 
 ## No warranty
 

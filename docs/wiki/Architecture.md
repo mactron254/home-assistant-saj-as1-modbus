@@ -1,5 +1,7 @@
 # Architecture
 
+This is an AI-generated project. Code, documentation, review, tests, and maintenance workflows were generated or reviewed with AI.
+
 ## Runtime layers
 
 | Area | File | Purpose |

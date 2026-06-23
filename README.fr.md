@@ -2,7 +2,7 @@
 
 > **Integration communautaire non officielle. Non affiliee, approuvee, soutenue ni prise en charge par SAJ.**
 >
-> Ce projet a ete cree avec assistance IA et tests communautaires. Utilisation a vos propres risques. L'auteur ne fournit aucune garantie et n'est pas responsable des dommages, erreurs de configuration, pertes de donnees, comportement de l'onduleur, batterie, reseau electrique ou consequences d'utilisation ou de mauvaise utilisation.
+> Ce projet, y compris le code, la documentation, la revue et la maintenance, a ete realise entierement avec des workflows generes par IA. Utilisation a vos propres risques. L'auteur ne fournit aucune garantie et n'est pas responsable des dommages, erreurs de configuration, pertes de donnees, comportement de l'onduleur, batterie, reseau electrique ou consequences d'utilisation ou de mauvaise utilisation.
 
 SAJ AS1 Modbus est une integration personnalisee Home Assistant pour SAJ AS1 via **Modbus TCP/IP uniquement**.
 

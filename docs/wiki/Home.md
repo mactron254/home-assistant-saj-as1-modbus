@@ -3,6 +3,8 @@
 This wiki documents the public Home Assistant custom integration for SAJ AS1 over Modbus TCP/IP.
 
 > Unofficial community integration. Not affiliated with, endorsed, approved, or supported by SAJ.
+>
+> AI-generated project. Code, documentation, review, tests, wiki pages, and maintenance workflows were generated or reviewed with AI.
 
 ## Pages
 

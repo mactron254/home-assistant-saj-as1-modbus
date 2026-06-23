@@ -2,6 +2,10 @@
 
 This file is for future AI agents and maintainers.
 
+## AI-generated disclosure
+
+This project was built, documented, reviewed, tested, and maintained using AI-generated workflows. Future changes must preserve the public "AI-generated project" disclosure in README files, `DISCLAIMER.md`, and wiki documentation.
+
 ## Project identity
 
 - Integration: `SAJ AS1 Modbus`
@@ -43,6 +47,7 @@ Charge/discharge percentage writes include the weekday high byte behavior alread
 
 - Always include unofficial SAJ disclaimer in public entry points.
 - Always state Modbus TCP/IP only.
+- Do not weaken the AI-generated project disclosure.
 - Keep root `README.md` in English.
 - Keep `README.es.md`, `README.de.md`, and `README.fr.md` aligned for safety and install notes.
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Clarify that the project code, documentation, review, tests, guides, and maintenance workflow are AI-generated/reviewed, not merely AI-assisted.
+
 ## 1.0.0
 
 - Initial public HACS custom repository release.

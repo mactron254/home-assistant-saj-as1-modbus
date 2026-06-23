@@ -27,7 +27,7 @@ def test_public_manifest_urls_and_owner_are_ready() -> None:
     assert manifest["documentation"] == REPO_URL
     assert manifest["issue_tracker"] == f"{REPO_URL}/issues"
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.0.1"
 
 
 def test_public_readmes_include_disclaimer_and_transport_scope() -> None:
@@ -36,11 +36,13 @@ def test_public_readmes_include_disclaimer_and_transport_scope() -> None:
         "README.md": (
             "Unofficial community integration",
             "Not affiliated with, endorsed, approved, or supported by SAJ",
+            "AI-generated",
             "Modbus TCP/IP only",
         ),
         "README.es.md": (
             "Integracion comunitaria no oficial",
             "No afiliada, aprobada, respaldada ni soportada por SAJ",
+            "realizados íntegramente con IA",
             "Modbus TCP/IP solamente",
         ),
         "README.de.md": (
@@ -80,8 +82,25 @@ def test_legal_and_safety_documents_exist() -> None:
 
     disclaimer = (PROJECT_ROOT / "DISCLAIMER.md").read_text(encoding="utf-8")
     assert "SAJ does not develop, review, validate, or provide support" in disclaimer
-    assert "AI assistance" in disclaimer
+    assert "AI-generated project" in disclaimer
+    assert "code, documentation, technical review, tests" in disclaimer
     assert "not legal advice" in disclaimer
+
+
+def test_ai_generated_disclosure_is_preserved() -> None:
+    """Public docs should clearly say the project is AI-generated."""
+    ai_context = (PROJECT_ROOT / "docs" / "AI_CONTEXT.md").read_text(encoding="utf-8")
+    wiki_home = (PROJECT_ROOT / "docs" / "wiki" / "Home.md").read_text(
+        encoding="utf-8"
+    )
+    wiki_architecture = (
+        PROJECT_ROOT / "docs" / "wiki" / "Architecture.md"
+    ).read_text(encoding="utf-8")
+
+    assert "AI-generated project" in ai_context
+    assert "Do not weaken the AI-generated project disclosure" in ai_context
+    assert "AI-generated project" in wiki_home
+    assert "AI-generated project" in wiki_architecture
 
 
 def test_internal_material_is_excluded_from_public_repository() -> None:

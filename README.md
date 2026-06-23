@@ -2,7 +2,7 @@
 
 > **Unofficial community integration. Not affiliated with, endorsed, approved, or supported by SAJ.**
 >
-> This project was built with AI assistance and community testing. Use it at your own risk. The author provides no warranty and is not responsible for damage, wrong configuration, data loss, inverter behavior, battery behavior, grid interaction, or any other consequence of use or misuse.
+> This project was built, documented, reviewed, and maintained using AI-generated workflows. Use it at your own risk. The author provides no warranty and is not responsible for damage, wrong configuration, data loss, inverter behavior, battery behavior, grid interaction, or any other consequence of use or misuse.
 
 [Español](README.es.md) | [Deutsch](README.de.md) | [Français](README.fr.md)
 
@@ -15,7 +15,7 @@ It is designed for local polling through an AIO3/Modbus TCP endpoint. It does **
 - Initial public target: HACS custom repository.
 - Repository: `mactron254/home-assistant-saj-as1-modbus`.
 - Integration domain: `saj_as1_modbus`.
-- Current release target: `v1.0.0`.
+- Current release target: `v1.0.1`.
 
 ## Features
 
