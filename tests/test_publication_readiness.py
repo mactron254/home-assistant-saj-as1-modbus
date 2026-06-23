@@ -27,7 +27,7 @@ def test_public_manifest_urls_and_owner_are_ready() -> None:
     assert manifest["documentation"] == REPO_URL
     assert manifest["issue_tracker"] == f"{REPO_URL}/issues"
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "3.1.1"
+    assert manifest["version"] == "3.1.2"
 
 
 def test_public_readmes_include_disclaimer_and_transport_scope() -> None:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.2
+
+- Add Home Assistant 2026.6.0 to development dependencies so GitHub Actions can import integration modules during tests.
+
 ## 3.1.1
 
 - Add HACS brand asset inside `custom_components/saj_as1_modbus/brand/icon.png`.
