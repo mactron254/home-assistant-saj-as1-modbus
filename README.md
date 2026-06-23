@@ -27,7 +27,7 @@ It is designed for local polling through an AIO3/Modbus TCP endpoint. It does **
 - One automation service: `saj_as1_modbus.set_profile`.
 - Diagnostics with sensitive IP redaction.
 - Repair issue when Modbus communication remains unavailable.
-- HACS-compatible `brands/saj_as1_modbus/icon.png`.
+- HACS-compatible brand icon in `custom_components/saj_as1_modbus/brand/icon.png`.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ It is designed for local polling through an AIO3/Modbus TCP endpoint. It does **
 2. Restart Home Assistant.
 3. Add the integration from the UI.
 
-Manual installs may not always show local brand icons. HACS/brands-compatible installs handle this better.
+Manual installs may not always show brand icons in every Home Assistant view. HACS-compatible installs handle this better.
 
 ## Configuration
 

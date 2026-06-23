@@ -24,4 +24,4 @@
 
 ## Brand icon does not show
 
-HACS/brands-compatible installs are more likely to show `brands/saj_as1_modbus/icon.png`. Manual installs may not always show local brand icons in the Home Assistant UI.
+HACS-compatible installs use `custom_components/saj_as1_modbus/brand/icon.png`. Manual installs may not always show local brand icons in every Home Assistant UI view.

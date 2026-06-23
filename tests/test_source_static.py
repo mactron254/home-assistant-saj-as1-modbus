@@ -150,6 +150,7 @@ def test_battery_time_sensors_are_visible_and_branded() -> None:
     )
     icons_source = (INTEGRATION_DIR / "icons.json").read_text(encoding="utf-8")
     icon_path = PROJECT_ROOT / "brands" / "saj_as1_modbus" / "icon.png"
+    hacs_icon_path = INTEGRATION_DIR / "brand" / "icon.png"
 
     for key in ("battery_time_to_full", "battery_time_to_empty"):
         sensor_block = sensor_source[
@@ -167,6 +168,8 @@ def test_battery_time_sensors_are_visible_and_branded() -> None:
 
     assert icon_path.exists()
     assert icon_path.stat().st_size > 0
+    assert hacs_icon_path.exists()
+    assert hacs_icon_path.stat().st_size > 0
 
 
 def test_evcc_grid_l1_sensors_are_documented_without_l2_l3() -> None:

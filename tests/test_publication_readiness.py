@@ -124,7 +124,10 @@ def test_github_templates_and_validation_workflow_exist() -> None:
 
 def test_brand_asset_exists_for_hacs() -> None:
     """HACS requires brand assets for integration repositories."""
-    icon = PROJECT_ROOT / "brands" / "saj_as1_modbus" / "icon.png"
+    icon = INTEGRATION_DIR / "brand" / "icon.png"
+    legacy_icon = PROJECT_ROOT / "brands" / "saj_as1_modbus" / "icon.png"
 
     assert icon.exists()
     assert icon.stat().st_size > 0
+    assert legacy_icon.exists()
+    assert legacy_icon.stat().st_size > 0
