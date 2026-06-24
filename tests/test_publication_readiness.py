@@ -124,6 +124,12 @@ def test_github_templates_and_validation_workflow_exist() -> None:
     """Public repository should have issue templates, PR template, and CI."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "validate.yml"
     workflow_text = workflow.read_text(encoding="utf-8")
+    codeowners = (PROJECT_ROOT / ".github" / "CODEOWNERS").read_text(
+        encoding="utf-8"
+    )
+    dependabot = (PROJECT_ROOT / ".github" / "dependabot.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert "hacs/action@main" in workflow_text
     assert "category: integration" in workflow_text
@@ -136,6 +142,9 @@ def test_github_templates_and_validation_workflow_exist() -> None:
     assert (
         PROJECT_ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml"
     ).exists()
+    assert "* @mactron254" in codeowners
+    assert 'package-ecosystem: "pip"' in dependabot
+    assert 'package-ecosystem: "github-actions"' in dependabot
 
 
 def test_brand_asset_exists_for_hacs() -> None:

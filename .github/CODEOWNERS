@@ -1,0 +1,10 @@
+# All repository changes require the owner review.
+* @mactron254
+
+# Critical integration and release surfaces.
+custom_components/saj_as1_modbus/ @mactron254
+.github/ @mactron254
+hacs.json @mactron254
+README.md @mactron254
+DISCLAIMER.md @mactron254
+SAFETY.md @mactron254
