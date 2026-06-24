@@ -1,5 +1,5 @@
 pytest>=8.0
-mypy>=1.10
+mypy>=2.1.0
 voluptuous>=0.15
 homeassistant==2026.6.0
 pymodbus==3.11.2
