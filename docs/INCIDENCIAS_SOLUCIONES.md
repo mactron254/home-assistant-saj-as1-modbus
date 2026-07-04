@@ -4,6 +4,39 @@ Este documento registra cada problema encontrado en pruebas reales de Home
 Assistant y la solución aplicada. Sirve como memoria técnica para futuras
 sesiones.
 
+## 2026-07-04 - Conflicto PyModbus tras actualizar a Home Assistant 2026.7.1
+
+### Sintoma
+
+Home Assistant no carga la integracion y registra:
+
+```text
+Unable to install package pymodbus==3.11.2
+Because you require pymodbus==3.11.2 and pymodbus==3.13.1,
+we can conclude that your requirements are unsatisfiable.
+```
+
+### Causa
+
+Home Assistant 2026.7.1 trae PyModbus 3.13.1 para su integracion core `modbus`.
+La integracion personalizada seguia fijando `pymodbus==3.11.2` en
+`manifest.json`, y Home Assistant no puede instalar dos versiones distintas del
+mismo paquete en el mismo entorno.
+
+### Solucion Aplicada
+
+- Quitar el pin duro `pymodbus==3.11.2` de `manifest.json`.
+- Usar `after_dependencies: ["modbus"]` para compartir la version de PyModbus
+  incluida por Home Assistant.
+- Mantener llamadas compatibles con PyModbus 3.11.2 y 3.13.1 (`device_id=` y
+  `client.close()` sin `await`).
+- Subir la version publica a `1.0.2`.
+
+### Verificacion Esperada
+
+- Home Assistant 2026.7.1 ya no intenta instalar `pymodbus==3.11.2`.
+- No aparece `Requirements for saj_as1_modbus not found`.
+- La integracion carga usando la version PyModbus incluida por Home Assistant.
 ## 2026-06-03 - Conflicto de PyModbus al abrir el flujo de configuración
 
 ### Síntoma
@@ -551,7 +584,7 @@ quality_scale.yaml
 ### Verificacion Esperada en Home Assistant
 
 1. Copiar tambien `icons.json` y `services.yaml`.
-2. Reiniciar Home Assistant 2026.6.x.
+2. Reiniciar Home Assistant 2026.6.x/2026.7.x.
 3. Confirmar que no hay deprecaciones por `show_advanced_options`.
 4. Confirmar que no hay avisos por listeners de config entry con reload.
 5. Ejecutar `saj_as1_modbus.set_profile` desde Acciones.

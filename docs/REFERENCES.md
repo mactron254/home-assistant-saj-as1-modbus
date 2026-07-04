@@ -15,7 +15,7 @@
 ## Modbus and dependencies
 
 - PyModbus: https://pymodbus.readthedocs.io/
-- Local pinned runtime dependency: `pymodbus==3.11.2`
+- Runtime PyModbus is supplied by Home Assistant through the core `modbus` integration.
 - Local AS1 protocol reference: `docs/reference/AS1Main control board and display board communication protocol (1).pdf`
 - Local protocol markdown extraction: `docs/reference/host_controller_display_panel_protocol.md`
 - Local PyModbus documentation snapshots:

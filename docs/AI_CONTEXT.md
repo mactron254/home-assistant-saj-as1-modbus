@@ -13,7 +13,8 @@ This project was built, documented, reviewed, tested, and maintained using AI-ge
 - Repository target: `mactron254/home-assistant-saj-as1-modbus`
 - Status: unofficial community integration, not supported by SAJ
 - Transport: Modbus TCP/IP only
-- Runtime Modbus dependency: `pymodbus==3.11.2`
+- Runtime Modbus dependency: the integration uses the PyModbus version bundled by Home Assistant through `after_dependencies: ["modbus"]`.
+- Compatibility target: keep API usage compatible with PyModbus 3.11.2 when Home Assistant ships it, while allowing newer Home Assistant releases such as 2026.7.1 to provide PyModbus 3.13.1.
 
 ## Architecture
 

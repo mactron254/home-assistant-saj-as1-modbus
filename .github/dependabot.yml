@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dev-tools:
+        patterns:
+          - "pytest"
+          - "mypy"
+    ignore:
+      # PyModbus is intentionally aligned with the Home Assistant version under test.
+      - dependency-name: "pymodbus"
     labels:
       - "dependencies"
       - "security"
@@ -14,6 +22,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "actions/*"
+          - "home-assistant/actions/*"
+          - "hacs/action"
     labels:
       - "dependencies"
       - "security"

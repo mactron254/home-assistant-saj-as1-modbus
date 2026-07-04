@@ -111,8 +111,8 @@ def test_personal_quality_audit_documents_exist() -> None:
     assert "integration-owner: done" in quality
     assert "icon-translations: done" in quality
     assert "inject-websession" in quality
-    assert "Home Assistant 2026.6" in audit
-    assert "pymodbus==3.11.2" in context
+    assert "Home Assistant 2026.6/2026.7" in audit
+    assert "uses the PyModbus version bundled by Home Assistant" in context
     assert "saj_as1_modbus.set_profile" in context
 
 
