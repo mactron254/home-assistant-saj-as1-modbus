@@ -10,10 +10,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION_DIR = PROJECT_ROOT / "custom_components" / "saj_as1_modbus"
 
 
-def test_manifest_pins_home_assistant_pymodbus_version() -> None:
+def test_manifest_uses_home_assistant_modbus_dependency() -> None:
     """The integration uses the PyModbus version bundled by Home Assistant."""
     manifest = json.loads((INTEGRATION_DIR / "manifest.json").read_text(encoding="utf-8"))
-    assert "pymodbus==3.11.2" in manifest["requirements"]
+    assert manifest["requirements"] == []
+    assert manifest["after_dependencies"] == ["modbus"]
+    assert not any(
+        requirement.startswith("pymodbus==")
+        for requirement in manifest["requirements"]
+    )
     assert manifest["config_flow"] is True
     assert manifest["iot_class"] == "local_polling"
     assert manifest["documentation"] == (
@@ -23,7 +28,7 @@ def test_manifest_pins_home_assistant_pymodbus_version() -> None:
         "https://github.com/mactron254/home-assistant-saj-as1-modbus/issues"
     )
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "1.0.1"
+    assert manifest["version"] == "1.0.2"
     assert "pymodbus" not in manifest.get("loggers", [])
 
 

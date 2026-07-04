@@ -27,7 +27,7 @@ def test_public_manifest_urls_and_owner_are_ready() -> None:
     assert manifest["documentation"] == REPO_URL
     assert manifest["issue_tracker"] == f"{REPO_URL}/issues"
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "1.0.1"
+    assert manifest["version"] == "1.0.2"
 
 
 def test_public_readmes_include_disclaimer_and_transport_scope() -> None:
@@ -38,22 +38,26 @@ def test_public_readmes_include_disclaimer_and_transport_scope() -> None:
             "Not affiliated with, endorsed, approved, or supported by SAJ",
             "AI-generated",
             "Modbus TCP/IP only",
+            "AI/Codex-generated workflows: 99%",
         ),
         "README.es.md": (
             "Integracion comunitaria no oficial",
             "No afiliada, aprobada, respaldada ni soportada por SAJ",
             "realizados íntegramente con IA",
             "Modbus TCP/IP solamente",
+            "flujos generados con IA/Codex: 99%",
         ),
         "README.de.md": (
             "Inoffizielle Community-Integration",
             "nicht von SAJ genehmigt",
             "nur Modbus TCP/IP",
+            "KI/Codex-generierte Workflows: 99%",
         ),
         "README.fr.md": (
             "Integration communautaire non officielle",
             "ni prise en charge par SAJ",
             "Modbus TCP/IP uniquement",
+            "workflows generes par IA/Codex : 99%",
         ),
     }
 
@@ -73,6 +77,7 @@ def test_legal_and_safety_documents_exist() -> None:
         "SECURITY.md",
         "CONTRIBUTING.md",
         "CHANGELOG.md",
+        "CONTRIBUTORS.md",
         "docs/AI_CONTEXT.md",
         "docs/REFERENCES.md",
     ):

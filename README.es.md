@@ -8,6 +8,11 @@ SAJ AS1 Modbus es una integracion personalizada de Home Assistant para leer y co
 
 No soporta Modbus RTU/RS485 directo. Esta pensada para un endpoint TCP como AIO3 por WiFi/LAN.
 
+## Atribucion de contribucion
+
+- flujos generados con IA/Codex: 99%.
+- validacion del propietario, pruebas reales y publicacion: 1%.
+
 ## Instalacion HACS
 
 1. Abre HACS.

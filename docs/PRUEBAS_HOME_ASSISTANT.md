@@ -130,8 +130,10 @@ Resultado esperado:
 
 - No aparece error de carga de `manifest.json`.
 - No aparece error de importación Python.
-- Home Assistant instala o carga `pymodbus==3.11.2` sin conflicto de requisitos.
-- En Home Assistant 2026.6.x no aparecen avisos de deprecación relacionados con
+- Home Assistant no intenta instalar un pin duro `pymodbus==3.11.2`.
+- Home Assistant carga la version de PyModbus incluida por su integracion core
+  `modbus` sin conflicto de requisitos.
+- En Home Assistant 2026.6.x/2026.7.x no aparecen avisos de deprecación relacionados con
   `show_advanced_options`, config entry listeners con reload ni servicios
   registrados solo por entrada.
 - No aparece un bucle continuo de `received eof` / `Connection lost comm` en los

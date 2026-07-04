@@ -9,10 +9,13 @@ oficial de Home Assistant Core ni un producto soportado por SAJ.
 
 El estado estructurado esta en `quality_scale.yaml`.
 
-## Compatibilidad Home Assistant 2026.6
+## Compatibilidad Home Assistant 2026.6/2026.7
 
-- Se mantiene `pymodbus==3.11.2` hasta confirmar la dependencia exacta que trae
-  Home Assistant 2026.6.x en la instalacion real.
+- La integracion no fija `pymodbus==...` en `manifest.json`.
+- Usa `after_dependencies: ["modbus"]` para compartir la version de PyModbus
+  que trae Home Assistant.
+- Compatibilidad esperada: Home Assistant 2026.6.x con PyModbus 3.11.2 y
+  Home Assistant 2026.7.1 con PyModbus 3.13.1.
 - La deprecacion de Home Assistant 2026.6 sobre mezclar listeners de config
   entry con metodos de reload no afecta al codigo actual: no se registra
   `entry.async_on_unload(...)` para reconfiguracion.

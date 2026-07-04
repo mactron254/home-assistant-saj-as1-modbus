@@ -24,24 +24,29 @@ La integración vive en `custom_components/saj_as1_modbus/` y se divide en capas
 
 ## PyModbus
 
-La integración usa `pymodbus==3.11.2` porque Home Assistant 2026.5.4 ya fija
-esa versión. Mantener el mismo pin evita conflictos de resolución de
-dependencias al cargar integraciones personalizadas.
+La integracion no fuerza una version concreta de PyModbus en `manifest.json`.
+Usa `after_dependencies: ["modbus"]` para cargar la version de PyModbus que ya
+incluye Home Assistant. Esto evita conflictos cuando Home Assistant actualiza
+su integracion core `modbus`.
 
-Para Home Assistant 2026.6.x se mantiene el mismo pin hasta comprobar la versión
-real incluida por la instalación. Si Home Assistant actualiza PyModbus, el cambio
-de dependencia debe hacerse en una tarea separada y con prueba real de carga.
+Compatibilidad esperada:
+
+- Home Assistant 2026.6.x: PyModbus 3.11.2.
+- Home Assistant 2026.7.1: PyModbus 3.13.1.
+
+La logica de conexion mantiene APIs compatibles con ambas versiones conocidas.
+No se debe volver a fijar `pymodbus==...` en `manifest.json` sin validar primero
+la version que trae Home Assistant.
 
 Reglas aplicadas:
 
 - Todas las llamadas usan `device_id`.
 - No se usa `slave=`.
 - `client.close()` se llama sin `await`.
-- La autoreconexión interna de PyModbus está desactivada con
-  `reconnect_delay=0`; la integración controla cierres y reintentos.
+- La autoreconexion interna de PyModbus esta desactivada con
+  `reconnect_delay=0`; la integracion controla cierres y reintentos.
 - Lecturas y escrituras pasan por `ModbusConnectionManager`.
-- Un único lock de I/O evita tramas Modbus concurrentes.
-
+- Un unico lock de I/O evita tramas Modbus concurrentes.
 ## Direccionamiento
 
 No se aplica offset `-1` dentro de esta integración. Las direcciones usadas son
