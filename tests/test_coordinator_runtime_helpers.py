@@ -52,7 +52,7 @@ def _fake_coordinator() -> SimpleNamespace:
         _bucket_expected_registers={
             "HIGH": 15,
             "MEDIUM": 24,
-            "CONFIG": 3,
+            "CONFIG": 9,
             "LOW": LOW_ENERGY_BLOCK_COUNT,
         },
         unavailable_keys={HIGH_KEYS[0], CONFIG_KEYS[0]},

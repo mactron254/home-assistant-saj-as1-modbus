@@ -18,6 +18,28 @@
         "default": "mdi:cog"
       }
     },
+    "time": {
+      "first_charge_start_time": {
+        "default": "mdi:battery-clock"
+      },
+      "first_charge_end_time": {
+        "default": "mdi:battery-clock-outline"
+      },
+      "first_discharge_start_time": {
+        "default": "mdi:battery-clock"
+      },
+      "first_discharge_end_time": {
+        "default": "mdi:battery-clock-outline"
+      }
+    },
+    "switch": {
+      "first_charge_schedule_enabled": {
+        "default": "mdi:battery-arrow-up"
+      },
+      "first_discharge_schedule_enabled": {
+        "default": "mdi:battery-arrow-down"
+      }
+    },
     "sensor": {
       "total_pv_power": {
         "default": "mdi:solar-power-variant"

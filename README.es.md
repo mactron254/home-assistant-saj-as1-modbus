@@ -63,3 +63,7 @@ La documentacion tecnica principal esta en ingles:
 - [Logs](docs/LOGGING.md)
 - [Seguridad](SAFETY.md)
 - [Aviso legal](DISCLAIMER.md)
+
+## Compatibilidad con PredBat
+
+La version objetivo `v1.1.0` anade controles de primera franja para PredBat. Lee [`docs/predbat/README.md`](docs/predbat/README.md); la validacion en hardware es obligatoria.

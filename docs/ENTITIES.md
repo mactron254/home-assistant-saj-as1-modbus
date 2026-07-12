@@ -47,3 +47,14 @@ L2/L3 are not exposed by this integration because the documented AS1 local proto
 - Connection state.
 
 Some diagnostic entities are disabled by default to reduce UI noise.
+
+## PredBat first-slot controls
+
+- First charge start/end time.
+- First discharge start/end time.
+- First charge/discharge schedule switch.
+- Existing first charge/discharge percentage numbers.
+- Existing user mode select.
+
+Switches control only bit 0 and preserve every other schedule slot. See
+`docs/predbat/README.md` before enabling writes.

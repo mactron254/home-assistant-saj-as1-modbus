@@ -75,6 +75,16 @@
     "select": {
       "user_mode": { "name": "Modo de usuario" }
     },
+    "time": {
+      "first_charge_start_time": { "name": "Inicio de carga primera franja" },
+      "first_charge_end_time": { "name": "Fin de carga primera franja" },
+      "first_discharge_start_time": { "name": "Inicio de descarga primera franja" },
+      "first_discharge_end_time": { "name": "Fin de descarga primera franja" }
+    },
+    "switch": {
+      "first_charge_schedule_enabled": { "name": "Horario de carga primera franja" },
+      "first_discharge_schedule_enabled": { "name": "Horario de descarga primera franja" }
+    },
     "binary_sensor": {
       "is_connected": { "name": "Estado de conexión" }
     }

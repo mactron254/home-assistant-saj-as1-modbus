@@ -15,7 +15,7 @@ It is designed for local polling through an AIO3/Modbus TCP endpoint. It does **
 - Initial public target: HACS custom repository.
 - Repository: `mactron254/home-assistant-saj-as1-modbus`.
 - Integration domain: `saj_as1_modbus`.
-- Current release target: `v1.0.2`.
+- Current release target: `v1.1.0` (hardware validation required before release).
 
 ## Contribution Attribution
 
@@ -152,3 +152,7 @@ If JavaScript tooling is ever added, use `pnpm` version 11 or newer.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## PredBat compatibility
+
+Target `v1.1.0` adds documented first-slot controls for custom PredBat. Read [`docs/predbat/README.md`](docs/predbat/README.md) before writes; hardware validation is mandatory.

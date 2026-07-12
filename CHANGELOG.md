@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- Add first charge/discharge schedule time entities and enable switches for PredBat.
+- Preserve all other schedule-enable bits with fail-closed read-modify-write.
+- Read documented first-slot configuration in two conservative AIO3 blocks.
+- Add PredBat mapping, signs, SoC, modes, rollback, and validation docs.
+- Never access physical SoC registers `0x3373` or `0x3374`.
+
 ## 1.0.2
 
 - Fix Home Assistant 2026.7.1 startup by removing the hard PyModbus runtime pin.

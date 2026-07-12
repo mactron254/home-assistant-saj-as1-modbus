@@ -589,3 +589,19 @@ quality_scale.yaml
 4. Confirmar que no hay avisos por listeners de config entry con reload.
 5. Ejecutar `saj_as1_modbus.set_profile` desde Acciones.
 6. Confirmar que los errores, si aparecen, salen en espanol.
+
+## 2026-07-12 - PredBat mode and schedule mask compatibility
+
+### Problem
+
+Fox looked similar because it uses schedules, but PredBat would command literal
+`SelfUse`, which SAJ does not expose. A direct boolean write could also erase
+enable bits for slots 2-7.
+
+### Resolution
+
+- Keep `has_fox_inverter_mode: false` and omit real SAJ `inverter_mode`.
+- Use explicit `Autoconsumo` and `Horario de Uso` services.
+- Read full `0x3604` or `0x3605` mask before changing bit 0.
+- Reject writes when the mask cannot be read.
+- Prohibit all Python access to `0x3373/0x3374`.

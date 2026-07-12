@@ -1,0 +1,114 @@
+# Merge this block into the existing PredBat `pred_bat:` application entry.
+pred_bat:
+  inverter_type: SAJ_AS1
+  inverter:
+    name: "SAJ AS1"
+    has_rest_api: false
+    has_mqtt_api: false
+    has_service_api: true
+    output_charge_control: "power"
+    charge_control_immediate: false
+    current_dp: 1
+    charge_discharge_with_rate: false
+    has_charge_enable_time: true
+    has_discharge_enable_time: true
+    has_target_soc: false
+    target_soc_used_for_discharge: false
+    has_reserve_soc: false
+    has_timed_pause: false
+    time_button_press: false
+    support_charge_freeze: false
+    support_discharge_freeze: false
+    has_ge_inverter_mode: false
+    has_fox_inverter_mode: false
+    has_idle_time: false
+    has_time_window: false
+    charge_time_format: "HH:MM:SS"
+    charge_time_entity_is_option: false
+    can_span_midnight: false
+    clock_time_format: "%Y-%m-%d %H:%M:%S"
+    num_load_entities: 1
+    soc_units: "%"
+    write_and_poll_sleep: 10
+
+  load_today:
+    - sensor.garaje_saj_as1_inverter_consumo_casa_diario
+  import_today:
+    - sensor.garaje_saj_as1_inverter_energia_importada_diaria
+  export_today:
+    - sensor.garaje_saj_as1_inverter_energia_exportada_diaria
+  pv_today:
+    - sensor.saj_inversor_r5_energia_hoy
+  battery_power:
+    - sensor.saj_as1_battery_power
+  battery_power_invert:
+    - false
+  grid_power:
+    - sensor.saj_as1_grid_power
+  grid_power_invert:
+    - true
+  load_power:
+    - sensor.saj_as1_inverter_potencia_casa
+  pv_power:
+    - sensor.saj_as1_inverter_potencia_solar_total
+  soc_percent:
+    - sensor.saj_as1_inverter_nivel_de_bateria_soc
+  soc_max:
+    - sensor.saj_as1_inverter_bateria_capacidad_real
+  battery_temperature:
+    - sensor.saj_as1_inverter_bateria_temperatura
+  battery_min_soc:
+    - 15
+  battery_rate_max:
+    - 3000
+  inverter_limit:
+    - 3000
+  inverter_limit_charge:
+    - 3000
+  inverter_limit_discharge:
+    - 3000
+  charge_rate_percent:
+    - number.saj_as1_first_charge_power_pct
+  discharge_rate_percent:
+    - number.saj_as1_first_discharge_power_pct
+  charge_start_time:
+    - time.saj_as1_first_charge_start_time
+  charge_end_time:
+    - time.saj_as1_first_charge_end_time
+  discharge_start_time:
+    - time.saj_as1_first_discharge_start_time
+  discharge_end_time:
+    - time.saj_as1_first_discharge_end_time
+  scheduled_charge_enable:
+    - switch.saj_as1_first_charge_schedule_enabled
+  scheduled_discharge_enable:
+    - switch.saj_as1_first_discharge_schedule_enabled
+
+  charge_start_service:
+    - service: switch.turn_off
+      entity_id: switch.saj_as1_first_discharge_schedule_enabled
+    - service: switch.turn_on
+      entity_id: switch.saj_as1_first_charge_schedule_enabled
+    - service: select.select_option
+      entity_id: select.saj_as1_user_mode
+      option: "Horario de Uso"
+  charge_stop_service:
+    - service: switch.turn_off
+      entity_id: switch.saj_as1_first_charge_schedule_enabled
+    - service: select.select_option
+      entity_id: select.saj_as1_user_mode
+      option: "Autoconsumo"
+  discharge_start_service:
+    - service: switch.turn_off
+      entity_id: switch.saj_as1_first_charge_schedule_enabled
+    - service: switch.turn_on
+      entity_id: switch.saj_as1_first_discharge_schedule_enabled
+    - service: select.select_option
+      entity_id: select.saj_as1_user_mode
+      option: "Horario de Uso"
+  discharge_stop_service:
+    - service: switch.turn_off
+      entity_id: switch.saj_as1_first_discharge_schedule_enabled
+    - service: select.select_option
+      entity_id: select.saj_as1_user_mode
+      option: "Autoconsumo"

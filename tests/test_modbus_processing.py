@@ -1,6 +1,12 @@
 """Tests for pure Modbus conversion helpers."""
 
+from datetime import time
+
+import pytest
+
 from custom_components.saj_as1_modbus.modbus_processing import (
+    decode_schedule_time,
+    encode_schedule_time,
     extract_byte_high,
     extract_byte_low,
     inject_days_weekdays,
@@ -12,6 +18,7 @@ from custom_components.saj_as1_modbus.modbus_processing import (
     read_uint16,
     read_uint32,
     read_voltage,
+    set_mask_bit,
     validate_percentage,
 )
 
@@ -52,3 +59,20 @@ def test_percentage_validation() -> None:
     assert validate_percentage(50) == 50
     assert validate_percentage(0) == 100
     assert validate_percentage(150) == 100
+
+
+def test_schedule_time_round_trip_and_validation() -> None:
+    """Schedule registers use hour in the high byte and minute in the low byte."""
+    assert decode_schedule_time(0x173B) == time(23, 59)
+    assert encode_schedule_time(time(6, 30, 45)) == 0x061E
+    with pytest.raises(ValueError):
+        decode_schedule_time(0x183B)
+    with pytest.raises(ValueError):
+        decode_schedule_time(0x1760)
+
+
+def test_schedule_mask_updates_only_one_bit() -> None:
+    """Read-modify-write helpers preserve slots two through seven."""
+    original = 0b10101010
+    assert set_mask_bit(original, 0x01, True) == 0b10101011
+    assert set_mask_bit(original, 0x01, False) == original

@@ -7,8 +7,14 @@ from custom_components.saj_as1_modbus.const import (
     LOW_ENERGY_BLOCK_START,
     LOW_ENERGY_REGISTERS,
     MEDIUM_KEYS,
+    REGISTER_CHARGE_END_TIME,
     REGISTER_CHARGE_POWER_PCT,
+    REGISTER_CHARGE_SCHEDULE_ENABLE,
+    REGISTER_CHARGE_START_TIME,
+    REGISTER_DISCHARGE_END_TIME,
     REGISTER_DISCHARGE_POWER_PCT,
+    REGISTER_DISCHARGE_SCHEDULE_ENABLE,
+    REGISTER_DISCHARGE_START_TIME,
     REGISTER_GRID_L1_STATUS_COUNT,
     REGISTER_GRID_L1_STATUS_START,
     SCAN_INTERVAL_CONFIG,
@@ -54,7 +60,13 @@ def test_sensitive_config_registers_use_slow_bucket() -> None:
 
 def test_config_registers_are_documented_addresses() -> None:
     """Writable charge/discharge registers match the AS1 protocol."""
+    assert REGISTER_CHARGE_SCHEDULE_ENABLE == 0x3604
+    assert REGISTER_DISCHARGE_SCHEDULE_ENABLE == 0x3605
+    assert REGISTER_CHARGE_START_TIME == 0x3606
+    assert REGISTER_CHARGE_END_TIME == 0x3607
     assert REGISTER_CHARGE_POWER_PCT == 0x3608
+    assert REGISTER_DISCHARGE_START_TIME == 0x361B
+    assert REGISTER_DISCHARGE_END_TIME == 0x361C
     assert REGISTER_DISCHARGE_POWER_PCT == 0x361D
 
 

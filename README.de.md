@@ -63,3 +63,7 @@ Die Hauptdokumentation ist auf Englisch:
 - [Logging](docs/LOGGING.md)
 - [Safety](SAFETY.md)
 - [Disclaimer](DISCLAIMER.md)
+
+## PredBat-Kompatibilitat
+
+Ziel `v1.1.0` erganzt Steuerungen des ersten Zeitfensters. Vor Schreibzugriffen [`docs/predbat/README.md`](docs/predbat/README.md) lesen; Hardwaretest ist Pflicht.

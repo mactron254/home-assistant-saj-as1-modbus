@@ -47,8 +47,19 @@ from .const import (
     REGISTER_BAT_SOC,
     REGISTER_BMS_COUNT,
     REGISTER_BMS_START,
+    FIRST_SCHEDULE_BIT,
+    REGISTER_CHARGE_CONFIG_COUNT,
+    REGISTER_CHARGE_CONFIG_START,
+    REGISTER_CHARGE_END_TIME,
     REGISTER_CHARGE_POWER_PCT,
+    REGISTER_CHARGE_SCHEDULE_ENABLE,
+    REGISTER_CHARGE_START_TIME,
+    REGISTER_DISCHARGE_CONFIG_COUNT,
+    REGISTER_DISCHARGE_CONFIG_START,
+    REGISTER_DISCHARGE_END_TIME,
     REGISTER_DISCHARGE_POWER_PCT,
+    REGISTER_DISCHARGE_SCHEDULE_ENABLE,
+    REGISTER_DISCHARGE_START_TIME,
     REGISTER_ERROR_COUNT,
     REGISTER_GRID_L1_STATUS_COUNT,
     REGISTER_GRID_L1_STATUS_START,
@@ -69,6 +80,7 @@ from .exceptions import (
     ReconnectionNeededError,
 )
 from .modbus_processing import (
+    decode_schedule_time,
     extract_byte_low,
     inject_days_weekdays,
     read_current,
@@ -78,6 +90,7 @@ from .modbus_processing import (
     read_temperature,
     read_uint16,
     read_voltage,
+    set_mask_bit,
     validate_percentage,
 )
 
@@ -125,6 +138,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._config_cache: dict[str, Any] = {}
         self._low_cache: dict[str, Any] = {}
         self._last_user_mode: int | None = None
+        self._schedule_masks: dict[int, int] = {}
         self._connection_issue_active = False
         self._last_update_duration = 0.0
         self._circuit_open_until = 0.0
@@ -151,7 +165,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._bucket_expected_registers = {
             "HIGH": 15,
             "MEDIUM": 24,
-            "CONFIG": 3,
+            "CONFIG": 9,
             "LOW": LOW_ENERGY_BLOCK_COUNT,
         }
 
@@ -283,6 +297,58 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._pending_writes = max(0, self._pending_writes - 1)
             self._write_requested = self._pending_writes > 0
 
+    async def async_set_schedule_enabled(
+        self,
+        address: int,
+        enabled: bool,
+    ) -> bool:
+        """Update bit zero after reading the complete schedule mask."""
+        supported = (
+            REGISTER_CHARGE_SCHEDULE_ENABLE,
+            REGISTER_DISCHARGE_SCHEDULE_ENABLE,
+        )
+        if address not in supported:
+            raise ValueError(f"Unsupported schedule mask register: 0x{address:04X}")
+
+        self._pending_writes += 1
+        self._write_requested = True
+        try:
+            async with self._write_lock:
+                try:
+                    await self.connection.close()
+                    await asyncio.sleep(AIO3_PRE_WRITE_DELAY)
+                    registers = await self._read_sensitive_register(
+                        address,
+                        "Schedule enable mask",
+                    )
+                except (ModbusReadError, ReconnectionNeededError) as err:
+                    self.last_error_type = str(err)
+                    _LOGGER.warning(
+                        "SAJ AS1 schedule mask read failed at 0x%04X: %s",
+                        address,
+                        err,
+                    )
+                    await self.connection.close()
+                    return False
+
+                original_mask = read_uint16(registers, 0)
+                self._schedule_masks[address] = original_mask
+                desired_mask = set_mask_bit(
+                    original_mask,
+                    FIRST_SCHEDULE_BIT,
+                    enabled,
+                )
+                if desired_mask == original_mask:
+                    self._update_write_cache(address, original_mask)
+                    await self.connection.close()
+                    return True
+
+                results = await self._apply_write_batch({address: desired_mask})
+                return results.get(address, False)
+        finally:
+            self._pending_writes = max(0, self._pending_writes - 1)
+            self._write_requested = self._pending_writes > 0
+
     async def _flush_write_batch(self) -> None:
         """Aplicar escrituras pendientes como un lote estilo Elekeeper."""
         await asyncio.sleep(AIO3_WRITE_BATCH_DELAY)
@@ -393,10 +459,16 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {address: False for address in batch_values}
 
     def _ordered_write_addresses(self, batch_values: dict[int, int]) -> list[int]:
-        """Ordenar escrituras: potencias primero y modo al final."""
+        """Order schedules safely, enable them, then set the user mode."""
         preferred_order = (
+            REGISTER_CHARGE_START_TIME,
+            REGISTER_CHARGE_END_TIME,
+            REGISTER_DISCHARGE_START_TIME,
+            REGISTER_DISCHARGE_END_TIME,
             REGISTER_CHARGE_POWER_PCT,
             REGISTER_DISCHARGE_POWER_PCT,
+            REGISTER_CHARGE_SCHEDULE_ENABLE,
+            REGISTER_DISCHARGE_SCHEDULE_ENABLE,
             REGISTER_USER_MODE,
         )
         ordered = [address for address in preferred_order if address in batch_values]
@@ -692,7 +764,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _read_config(self) -> dict[str, Any]:
-        """Leer configuración de usuario de baja variación."""
+        """Read user mode and first charge/discharge schedule blocks."""
         data: dict[str, Any] = {}
 
         await self._wait_for_write_priority()
@@ -701,20 +773,52 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         await self._delay_between_blocks()
         charge_regs = await self._read_sensitive_register(
-            REGISTER_CHARGE_POWER_PCT,
-            "Potencia de carga",
+            REGISTER_CHARGE_CONFIG_START,
+            "Charge schedule block",
+            REGISTER_CHARGE_CONFIG_COUNT,
         )
-        data["first_charge_power_pct"] = validate_percentage(
-            extract_byte_low(read_uint16(charge_regs, 0))
+        charge_mask = read_uint16(charge_regs, 0)
+        discharge_mask = read_uint16(charge_regs, 1)
+        self._schedule_masks[REGISTER_CHARGE_SCHEDULE_ENABLE] = charge_mask
+        self._schedule_masks[REGISTER_DISCHARGE_SCHEDULE_ENABLE] = discharge_mask
+        data.update(
+            {
+                "first_charge_schedule_enabled": bool(
+                    charge_mask & FIRST_SCHEDULE_BIT
+                ),
+                "first_discharge_schedule_enabled": bool(
+                    discharge_mask & FIRST_SCHEDULE_BIT
+                ),
+                "first_charge_start_time": decode_schedule_time(
+                    read_uint16(charge_regs, 2)
+                ),
+                "first_charge_end_time": decode_schedule_time(
+                    read_uint16(charge_regs, 3)
+                ),
+                "first_charge_power_pct": validate_percentage(
+                    extract_byte_low(read_uint16(charge_regs, 4))
+                ),
+            }
         )
 
         await self._delay_between_blocks()
         discharge_regs = await self._read_sensitive_register(
-            REGISTER_DISCHARGE_POWER_PCT,
-            "Potencia de descarga",
+            REGISTER_DISCHARGE_CONFIG_START,
+            "Discharge schedule block",
+            REGISTER_DISCHARGE_CONFIG_COUNT,
         )
-        data["first_discharge_power_pct"] = validate_percentage(
-            extract_byte_low(read_uint16(discharge_regs, 0))
+        data.update(
+            {
+                "first_discharge_start_time": decode_schedule_time(
+                    read_uint16(discharge_regs, 0)
+                ),
+                "first_discharge_end_time": decode_schedule_time(
+                    read_uint16(discharge_regs, 1)
+                ),
+                "first_discharge_power_pct": validate_percentage(
+                    extract_byte_low(read_uint16(discharge_regs, 2))
+                ),
+            }
         )
 
         return data
@@ -751,12 +855,17 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self._last_user_mode
 
-    async def _read_sensitive_register(self, address: int, label: str) -> list[int]:
-        """Leer un registro sensible con reintentos para AIO3 WiFi."""
+    async def _read_sensitive_register(
+        self,
+        address: int,
+        label: str,
+        count: int = 1,
+    ) -> list[int]:
+        """Read a sensitive register block with bounded AIO3 retries."""
         last_error: Exception | None = None
         for attempt in range(1, AIO3_SENSITIVE_RETRIES + 1):
             try:
-                return await self.connection.read_registers(address, 1)
+                return await self.connection.read_registers(address, count)
             except (ModbusReadError, ReconnectionNeededError) as err:
                 last_error = err
                 _LOGGER.debug(
@@ -775,14 +884,36 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _update_write_cache(self, address: int, value: int) -> None:
-        """Aplicar una escritura correcta a las cachés del coordinador."""
+        """Apply a successful configuration write to coordinator caches."""
         key: str | None = None
+        cache_value: Any = value
         if address == REGISTER_CHARGE_POWER_PCT:
             key = "first_charge_power_pct"
-            value = validate_percentage(value)
+            cache_value = validate_percentage(value)
         elif address == REGISTER_DISCHARGE_POWER_PCT:
             key = "first_discharge_power_pct"
-            value = validate_percentage(value)
+            cache_value = validate_percentage(value)
+        elif address == REGISTER_CHARGE_SCHEDULE_ENABLE:
+            key = "first_charge_schedule_enabled"
+            self._schedule_masks[address] = value
+            cache_value = bool(value & FIRST_SCHEDULE_BIT)
+        elif address == REGISTER_DISCHARGE_SCHEDULE_ENABLE:
+            key = "first_discharge_schedule_enabled"
+            self._schedule_masks[address] = value
+            cache_value = bool(value & FIRST_SCHEDULE_BIT)
+        elif address in (
+            REGISTER_CHARGE_START_TIME,
+            REGISTER_CHARGE_END_TIME,
+            REGISTER_DISCHARGE_START_TIME,
+            REGISTER_DISCHARGE_END_TIME,
+        ):
+            key = {
+                REGISTER_CHARGE_START_TIME: "first_charge_start_time",
+                REGISTER_CHARGE_END_TIME: "first_charge_end_time",
+                REGISTER_DISCHARGE_START_TIME: "first_discharge_start_time",
+                REGISTER_DISCHARGE_END_TIME: "first_discharge_end_time",
+            }[address]
+            cache_value = decode_schedule_time(value)
         elif address == REGISTER_USER_MODE:
             key = "user_mode"
             self._last_user_mode = value
@@ -791,8 +922,8 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         current_data = dict(self.data or {})
-        current_data[key] = value
-        self._config_cache[key] = value
+        current_data[key] = cache_value
+        self._config_cache[key] = cache_value
         self.unavailable_keys.discard(key)
         self.async_set_updated_data(current_data)
 
@@ -896,10 +1027,16 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @staticmethod
     def _zero_config() -> dict[str, Any]:
-        """Devolver valores fallback de configuración."""
+        """Return safe fallback values for schedule configuration."""
         return {
             "user_mode": None,
+            "first_charge_schedule_enabled": False,
+            "first_charge_start_time": None,
+            "first_charge_end_time": None,
             "first_charge_power_pct": 100,
+            "first_discharge_schedule_enabled": False,
+            "first_discharge_start_time": None,
+            "first_discharge_end_time": None,
             "first_discharge_power_pct": 100,
         }
 

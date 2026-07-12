@@ -63,3 +63,7 @@ La documentation principale est en anglais:
 - [Logging](docs/LOGGING.md)
 - [Safety](SAFETY.md)
 - [Disclaimer](DISCLAIMER.md)
+
+## Compatibilite PredBat
+
+La cible `v1.1.0` ajoute les controles du premier creneau. Lire [`docs/predbat/README.md`](docs/predbat/README.md) avant toute ecriture; validation materielle obligatoire.

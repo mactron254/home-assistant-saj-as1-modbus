@@ -19,6 +19,7 @@ TIPOS DE DATOS (según manual):
 """
 from __future__ import annotations
 
+from datetime import time
 from typing import List
 
 
@@ -343,3 +344,28 @@ def validate_percentage(value: int) -> int:
     if value > 100:
         return 100
     return value
+
+
+def decode_schedule_time(value: int) -> time:
+    """Decode an SAJ schedule register into a minute-precision time."""
+    if not 0 <= value <= 0xFFFF:
+        raise ValueError(f"Schedule register is outside UInt16: {value}")
+    hour = extract_byte_high(value)
+    minute = extract_byte_low(value)
+    if hour > 23 or minute > 59:
+        raise ValueError(f"Invalid schedule time register: 0x{value:04X}")
+    return time(hour=hour, minute=minute)
+
+
+def encode_schedule_time(value: time) -> int:
+    """Encode a Home Assistant time as an SAJ hour/minute register."""
+    return (value.hour << 8) | value.minute
+
+
+def set_mask_bit(mask: int, bit: int, enabled: bool) -> int:
+    """Set or clear one bit while preserving every other mask bit."""
+    if not 0 <= mask <= 0xFFFF:
+        raise ValueError(f"Schedule mask is outside UInt16: {mask}")
+    if bit <= 0 or bit > 0xFFFF or bit & (bit - 1):
+        raise ValueError(f"Schedule mask bit must contain one bit: {bit}")
+    return mask | bit if enabled else mask & ~bit

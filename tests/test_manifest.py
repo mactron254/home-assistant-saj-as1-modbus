@@ -28,7 +28,7 @@ def test_manifest_uses_home_assistant_modbus_dependency() -> None:
         "https://github.com/mactron254/home-assistant-saj-as1-modbus/issues"
     )
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "1.0.2"
+    assert manifest["version"] == "1.1.0"
     assert "pymodbus" not in manifest.get("loggers", [])
 
 

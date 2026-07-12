@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "saj_as1_modbus"
 DEFAULT_NAME: Final = "SAJ AS1"
-INTEGRATION_VERSION: Final = "1.0.2"
+INTEGRATION_VERSION: Final = "1.1.0"
 
 CONF_DEVICE_ID: Final = "device_id"
 CONF_SCAN_INTERVAL: Final = "scan_interval"  # Legacy key removed during migration.
@@ -52,8 +52,20 @@ REGISTER_GRID_L1_STATUS_COUNT: Final = 3
 REGISTER_BMS_START: Final = 0xA000
 REGISTER_BMS_COUNT: Final = 18
 REGISTER_USER_MODE: Final = 0x3371
+REGISTER_CHARGE_SCHEDULE_ENABLE: Final = 0x3604
+REGISTER_DISCHARGE_SCHEDULE_ENABLE: Final = 0x3605
+REGISTER_CHARGE_START_TIME: Final = 0x3606
+REGISTER_CHARGE_END_TIME: Final = 0x3607
 REGISTER_CHARGE_POWER_PCT: Final = 0x3608
+REGISTER_DISCHARGE_START_TIME: Final = 0x361B
+REGISTER_DISCHARGE_END_TIME: Final = 0x361C
 REGISTER_DISCHARGE_POWER_PCT: Final = 0x361D
+
+REGISTER_CHARGE_CONFIG_START: Final = REGISTER_CHARGE_SCHEDULE_ENABLE
+REGISTER_CHARGE_CONFIG_COUNT: Final = 5
+REGISTER_DISCHARGE_CONFIG_START: Final = REGISTER_DISCHARGE_START_TIME
+REGISTER_DISCHARGE_CONFIG_COUNT: Final = 3
+FIRST_SCHEDULE_BIT: Final = 0x01
 
 LOW_ENERGY_REGISTERS: Final = {
     "total_pv_energy": 0x40C5,
@@ -99,7 +111,13 @@ MEDIUM_KEYS: Final = (
 
 CONFIG_KEYS: Final = (
     "user_mode",
+    "first_charge_schedule_enabled",
+    "first_charge_start_time",
+    "first_charge_end_time",
     "first_charge_power_pct",
+    "first_discharge_schedule_enabled",
+    "first_discharge_start_time",
+    "first_discharge_end_time",
     "first_discharge_power_pct",
 )
 

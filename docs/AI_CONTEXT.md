@@ -38,11 +38,26 @@ This project was built, documented, reviewed, tested, and maintained using AI-ge
 Supported writes:
 
 - `0x3371` user mode.
+- Bit 0 of `0x3604` first charge schedule enable.
+- Bit 0 of `0x3605` first discharge schedule enable.
+- `0x3606` and `0x3607` first charge start/end time.
 - `0x3608` first charge power percentage.
+- `0x361B` and `0x361C` first discharge start/end time.
 - `0x361D` first discharge power percentage.
 - Service: `saj_as1_modbus.set_profile`.
 
-Charge/discharge percentage writes include the weekday high byte behavior already implemented by the integration.
+Read configuration in blocks `0x3604-0x3608` and `0x361B-0x361D`.
+Time uses hour in the high byte and minute in the low byte. Enable writes must
+read the full original mask, change bit 0, preserve all other bits, and fail
+closed when the mask cannot be read. Write times/rates before enable masks and
+user mode last. Equal schedule values must not be written again.
+
+Charge/discharge percentage writes keep the existing weekday high byte.
+
+PredBat must never read or write physical SoC registers `0x3373` or `0x3374`.
+Do not expose target SoC, reserve SoC, or charge-limit entities. Keep
+`has_fox_inverter_mode: false` because PredBat hard-codes `SelfUse`; use
+explicit services for `Autoconsumo` and `Horario de Uso`.
 
 ## Public documentation rules
 
