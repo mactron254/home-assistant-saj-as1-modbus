@@ -589,3 +589,30 @@ quality_scale.yaml
 4. Confirmar que no hay avisos por listeners de config entry con reload.
 5. Ejecutar `saj_as1_modbus.set_profile` desde Acciones.
 6. Confirmar que los errores, si aparecen, salen en espanol.
+
+## 2026-07-12 - Dependabot could not apply labels
+
+### Symptom
+
+Dependabot opened PR #9, but reported that the configured `dependencies` and
+`security` labels did not exist. Checks passed, but the bot remained noisy and
+required maintenance outside the chosen release workflow.
+
+### Cause
+
+`.github/dependabot.yml` requested labels that had never been created. Automated
+version PRs are also not part of this integration's publication workflow.
+
+### Resolution
+
+- Removed `.github/dependabot.yml` to stop automated version PRs.
+- Closed PR #9 without merging it.
+- Disabled automated security-fix PRs.
+- Kept vulnerability alerts, CodeQL, HACS, Hassfest, and `Validate` enabled.
+- Removed the publication test that required a Dependabot configuration.
+
+### Related HACS incident
+
+The scheduled run on 2026-07-08 failed while downloading `hacs.json` because
+GitHub temporarily rate-limited the request. Python and Hassfest passed, and later
+HACS runs passed without code changes. This was not an integration defect.
