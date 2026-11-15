@@ -12,19 +12,24 @@ class SAJModbusException(Exception):
 
 
 class ReconnectionNeededError(SAJModbusException):
-    """Raised when the Modbus client needs a reconnect."""
+    """Raised when the Modbus session broke and a new connection is needed."""
+
+
+class ConnectFailedError(ReconnectionNeededError):
+    """Raised when no TCP connection could be opened after all attempts.
+
+    Callers that retry a broken session (EOF, no response) must not retry this
+    one: every retry would run the full connect sequence against a host that is
+    already known to be unreachable.
+    """
 
 
 class ModbusReadError(SAJModbusException):
-    """Raised when a Modbus read fails."""
+    """Raised when the device answers a read with an error or no data."""
 
 
 class ModbusWriteError(SAJModbusException):
     """Raised when a Modbus write fails."""
-
-
-class MaxRetriesExceededError(SAJModbusException):
-    """Raised when all Modbus connection retries are exhausted."""
 
 
 class SAJWriteFailedError(HomeAssistantError):

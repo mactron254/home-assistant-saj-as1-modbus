@@ -13,7 +13,9 @@ INTEGRATION_DIR = PROJECT_ROOT / "custom_components" / "saj_as1_modbus"
 def test_manifest_uses_home_assistant_modbus_dependency() -> None:
     """The integration uses the PyModbus version bundled by Home Assistant."""
     manifest = json.loads((INTEGRATION_DIR / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["requirements"] == []
+    # A lower bound only: Home Assistant ships its own PyModbus pin, and an
+    # exact pin here made startup fail twice when the versions diverged.
+    assert manifest["requirements"] == ["pymodbus>=3.11.2"]
     assert manifest["after_dependencies"] == ["modbus"]
     assert not any(
         requirement.startswith("pymodbus==")
@@ -28,7 +30,7 @@ def test_manifest_uses_home_assistant_modbus_dependency() -> None:
         "https://github.com/mactron254/home-assistant-saj-as1-modbus/issues"
     )
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "1.0.2"
+    assert manifest["version"] == "2.0.0"
     assert "pymodbus" not in manifest.get("loggers", [])
 
 

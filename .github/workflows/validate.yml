@@ -12,7 +12,26 @@ permissions:
 
 jobs:
   python:
+    name: Tests (${{ matrix.name }})
     runs-on: ubuntu-latest
+    # The "latest" harness follows new Home Assistant releases and only warns.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: HA 2026.5.0 (minimum)
+            harness: "pytest-homeassistant-custom-component==0.13.329"
+            pymodbus: "pymodbus==3.11.2"
+            experimental: false
+          - name: HA 2026.10.4
+            harness: "pytest-homeassistant-custom-component==0.13.375"
+            pymodbus: "pymodbus==3.13.1"
+            experimental: false
+          - name: latest harness
+            harness: "pytest-homeassistant-custom-component"
+            pymodbus: "pymodbus"
+            experimental: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -23,12 +42,13 @@ jobs:
           python-version: "3.14"
 
       - name: Install test dependencies
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install "${{ matrix.harness }}" "${{ matrix.pymodbus }}" "mypy>=1.10"
 
       - name: Run tests
         run: pytest tests --rootdir=tests
 
       - name: Run mypy
+        if: matrix.name == 'HA 2026.10.4'
         run: mypy --strict --ignore-missing-imports --explicit-package-bases custom_components/saj_as1_modbus tests
 
   hacs:

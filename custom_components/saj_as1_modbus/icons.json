@@ -15,7 +15,13 @@
     },
     "select": {
       "user_mode": {
-        "default": "mdi:cog"
+        "default": "mdi:cog",
+        "state": {
+          "self_use": "mdi:home-battery",
+          "time_of_use": "mdi:clock-outline",
+          "backup": "mdi:battery-lock",
+          "manual": "mdi:hand-back-right"
+        }
       }
     },
     "sensor": {
@@ -91,6 +97,11 @@
       "bat_number": {
         "default": "mdi:numeric"
       }
+    }
+  },
+  "services": {
+    "set_profile": {
+      "service": "mdi:battery-sync"
     }
   }
 }

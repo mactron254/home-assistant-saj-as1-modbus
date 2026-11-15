@@ -4,6 +4,7 @@ from custom_components.saj_as1_modbus.modbus_processing import (
     extract_byte_high,
     extract_byte_low,
     inject_days_weekdays,
+    percentage_from_register,
     read_current,
     read_energy,
     read_int16,
@@ -44,11 +45,16 @@ def test_weekday_power_byte_helpers() -> None:
     assert value == 0x7F32
     assert extract_byte_high(value) == 0x7F
     assert extract_byte_low(value) == 50
+    assert inject_days_weekdays(60, 0x1F) == 0x1F3C
+    assert inject_days_weekdays(40, 0x00) == 0x7F28
 
 
-def test_percentage_validation() -> None:
-    """Power percentage writes stay in the AS1-supported range."""
+def test_percentage_helpers() -> None:
+    """Reads report the stored value, writes stay in the 1-100 range."""
+    assert percentage_from_register(0x7F00) == 0
+    assert percentage_from_register(0x1F32) == 50
+    assert percentage_from_register(0x00FF) == 100
     assert validate_percentage(1) == 1
     assert validate_percentage(50) == 50
-    assert validate_percentage(0) == 100
+    assert validate_percentage(0) == 1
     assert validate_percentage(150) == 100

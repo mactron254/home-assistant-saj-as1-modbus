@@ -54,18 +54,22 @@ def test_service_errors_are_translatable() -> None:
         "write_failed",
         "profile_requires_value",
         "profile_write_failed",
-        "entry_required",
-        "entry_not_found",
-        "entry_not_loaded",
         "invalid_user_mode",
+        "update_failed",
+        "circuit_open",
+        "entry_required",
+        "entry_not_loaded",
     }
 
     assert expected <= set(strings["exceptions"])
     assert expected <= set(es_strings["exceptions"])
 
-    init_source = (INTEGRATION_DIR / "__init__.py").read_text(encoding="utf-8")
-    for key in expected - {"write_failed"}:
-        assert f'translation_key="{key}"' in init_source
+    source = "".join(
+        (INTEGRATION_DIR / name).read_text(encoding="utf-8")
+        for name in ("__init__.py", "coordinator.py", "exceptions.py")
+    )
+    for key in expected:
+        assert f'translation_key="{key}"' in source
 
 
 def test_home_assistant_2026_6_config_flow_guardrails() -> None:

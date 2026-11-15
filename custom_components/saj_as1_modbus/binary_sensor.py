@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import (
+from homeassistant.components.binary_sensor import (  # type: ignore[attr-defined,unused-ignore]
+    # Re-exported implicitly in 2026.10, explicitly again in 2026.12.
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import SAJModbusCoordinator
 from .entity import SAJEntity
+from .models import SAJConfigEntry
 
-PARALLEL_UPDATES = 1
+# Read-only entities are updated by the coordinator.
+PARALLEL_UPDATES = 0
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[BinarySensorEntityDescription, ...] = (
     BinarySensorEntityDescription(
@@ -29,8 +31,8 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[BinarySensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: SAJConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up SAJ AS1 binary sensors."""
     coordinator = entry.runtime_data.coordinator
@@ -51,9 +53,8 @@ class SAJBinarySensor(SAJEntity, BinarySensorEntity):
         description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
 
     @property
     def is_on(self) -> bool | None:

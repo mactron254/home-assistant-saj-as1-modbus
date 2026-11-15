@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import REGISTER_CHARGE_POWER_PCT, REGISTER_DISCHARGE_POWER_PCT
 from .coordinator import SAJModbusCoordinator
 from .entity import SAJEntity
 from .exceptions import SAJWriteFailedError
+from .models import SAJConfigEntry
 
 PARALLEL_UPDATES = 1
 
@@ -51,8 +51,8 @@ NUMBER_DESCRIPTIONS: tuple[SAJNumberEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: SAJConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up SAJ AS1 number entities."""
     coordinator = entry.runtime_data.coordinator
@@ -72,9 +72,8 @@ class SAJNumber(SAJEntity, NumberEntity):
         description: SAJNumberEntityDescription,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
 
     @property
     def native_value(self) -> float | None:

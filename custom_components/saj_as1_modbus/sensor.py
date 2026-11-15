@@ -8,7 +8,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EntityCategory,
     PERCENTAGE,
@@ -21,12 +20,15 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import WORKING_MODE_OPTIONS
 from .coordinator import SAJModbusCoordinator
 from .entity import SAJEntity
+from .models import SAJConfigEntry
 
-PARALLEL_UPDATES = 1
+# Read-only entities are updated by the coordinator.
+PARALLEL_UPDATES = 0
 
 SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
@@ -212,12 +214,15 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="working_mode_name",
         translation_key="working_mode_name",
+        device_class=SensorDeviceClass.ENUM,
+        options=WORKING_MODE_OPTIONS,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="battery_capacity_real",
         translation_key="battery_capacity_real",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
@@ -246,8 +251,8 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: SAJConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up SAJ AS1 sensors from a config entry."""
     coordinator = entry.runtime_data.coordinator
@@ -267,9 +272,8 @@ class SAJSensor(SAJEntity, SensorEntity):
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
 
     @property
     def native_value(self) -> str | int | float | None:

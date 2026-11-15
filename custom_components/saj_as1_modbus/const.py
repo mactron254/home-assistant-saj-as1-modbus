@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "saj_as1_modbus"
-DEFAULT_NAME: Final = "SAJ AS1"
-INTEGRATION_VERSION: Final = "1.0.2"
+MANUFACTURER: Final = "SAJ Electric"
+MODEL: Final = "AS1"
 
 CONF_DEVICE_ID: Final = "device_id"
 CONF_SCAN_INTERVAL: Final = "scan_interval"  # Legacy key removed during migration.
 
 DEFAULT_DEVICE_ID: Final = 1
-DEFAULT_SCAN_INTERVAL: Final = 30
+DEFAULT_PORT: Final = 502
 MODBUS_TIMEOUT: Final = 10
 
 SCAN_INTERVAL_HIGH: Final = 30
@@ -20,6 +20,12 @@ SCAN_INTERVAL_MEDIUM: Final = 60
 SCAN_INTERVAL_CONFIG: Final = 300
 SCAN_INTERVAL_LOW: Final = 300
 AIOT_DELAY_MS: Final = 300
+
+# Upper bound for one complete poll cycle. DataUpdateCoordinator does not
+# impose a timeout of its own, so a stalled await would otherwise stop polling
+# silently until the entry is reloaded. Generous on purpose: a cycle that waits
+# for a slow write batch must not be cut short.
+POLL_CYCLE_TIMEOUT: Final = 300.0
 
 AIO3_PRE_WRITE_DELAY: Final = 1.0
 AIO3_WRITE_SETTLE_DELAY: Final = 5.0
@@ -35,9 +41,16 @@ MAX_FAILURES_BEFORE_UNAVAILABLE: Final = 5
 AIO3_CIRCUIT_BREAKER_FAILURES: Final = 3
 AIO3_CIRCUIT_BREAKER_COOLDOWN: Final = 60.0
 
+# Consecutive failed cycles during which the last good values are kept. From
+# this failure on, the coordinator raises UpdateFailed and entities become
+# unavailable instead of showing frozen readings.
+STALE_DATA_MAX_FAILURES: Final = 3
+
+# A repair issue is only raised when the inverter has been unreachable for this
+# long, so short WiFi drops of the AIO3 stick do not create noise.
+CONNECTION_ISSUE_DELAY: Final = 900.0
+
 BAT_ENERGY_CAPACITY_NOMINAL: Final = 5.12
-POWER_THRESHOLD_CHARGING: Final = 50
-POWER_THRESHOLD_DISCHARGING: Final = 50
 
 REGISTER_BAT_POWER: Final = 0x406D
 REGISTER_BAT_SOC: Final = 0x406F
@@ -54,6 +67,10 @@ REGISTER_BMS_COUNT: Final = 18
 REGISTER_USER_MODE: Final = 0x3371
 REGISTER_CHARGE_POWER_PCT: Final = 0x3608
 REGISTER_DISCHARGE_POWER_PCT: Final = 0x361D
+
+# Weekday mask written in the high byte of the slot power registers when the
+# current mask is unknown or empty (0x7F = Monday to Sunday).
+WEEKDAYS_ALL: Final = 0x7F
 
 LOW_ENERGY_REGISTERS: Final = {
     "total_pv_energy": 0x40C5,
@@ -105,27 +122,38 @@ CONFIG_KEYS: Final = (
 
 LOW_KEYS: Final = tuple(LOW_ENERGY_REGISTERS)
 
+# Working mode register values mapped to enum sensor states.
 WORKING_MODES: Final = {
-    0: "Standby",
-    1: "Self Use",
-    2: "Peak Shaving",
-    3: "Backup",
-    4: "Off-Grid",
+    0: "standby",
+    1: "self_use",
+    2: "peak_shaving",
+    3: "backup",
+    4: "off_grid",
 }
+WORKING_MODE_OPTIONS: Final = list(WORKING_MODES.values())
 
 USER_MODE_SELF_USE: Final = 1
-USER_MODE_TOU: Final = 2
+USER_MODE_TIME_OF_USE: Final = 2
 USER_MODE_BACKUP: Final = 3
 USER_MODE_MANUAL: Final = 4
 
+# User mode register values mapped to select options (translated in the UI).
 USER_MODES: Final = {
-    USER_MODE_SELF_USE: "Autoconsumo",
-    USER_MODE_TOU: "Horario de Uso",
-    USER_MODE_BACKUP: "Reserva",
-    USER_MODE_MANUAL: "Manual",
+    USER_MODE_SELF_USE: "self_use",
+    USER_MODE_TIME_OF_USE: "time_of_use",
+    USER_MODE_BACKUP: "backup",
+    USER_MODE_MANUAL: "manual",
 }
-
 USER_MODE_OPTIONS: Final = list(USER_MODES.values())
+
+# Spanish option labels used before 2.0.0. The set_profile action still accepts
+# them so existing automations keep working.
+LEGACY_USER_MODE_OPTIONS: Final = {
+    "Autoconsumo": "self_use",
+    "Horario de Uso": "time_of_use",
+    "Reserva": "backup",
+    "Manual": "manual",
+}
 
 ISSUE_CONNECTION_UNAVAILABLE: Final = "connection_unavailable"
 

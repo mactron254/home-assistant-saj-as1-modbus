@@ -1,19 +1,17 @@
-"""Gestión de conexión Modbus TCP para SAJ AS1."""
+"""Modbus TCP connection handling for the SAJ AS1."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 
 from pymodbus.client import AsyncModbusTcpClient
-from pymodbus.exceptions import ModbusException, ModbusIOException
+from pymodbus.exceptions import ModbusException
 from pymodbus.pdu import ExceptionResponse
 
-from homeassistant.core import HomeAssistant
-
+from .const import MODBUS_TIMEOUT, REGISTER_WORKING_MODE
 from .exceptions import (
-    MaxRetriesExceededError,
+    ConnectFailedError,
     ModbusReadError,
     ModbusWriteError,
     ReconnectionNeededError,
@@ -21,67 +19,45 @@ from .exceptions import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CONNECTION_CACHE_TTL = 60.0
-HEALTH_CHECK_INTERVAL = 30.0
-MAX_RETRIES = 3
+CONNECT_ATTEMPTS = 3
 INITIAL_BACKOFF = 0.5
 MAX_BACKOFF = 4.0
+# Extra time on top of the PyModbus connect timeout before the attempt is
+# abandoned. PyModbus bounds connect() itself, this only guards against a
+# connect that never returns (SYN blackhole of a crashed WiFi stick).
+CONNECT_TIMEOUT_MARGIN = 2.0
+FAST_WRITE_RETRY_DELAY = 0.5
 
-
-class ConnectionCache:
-    """Caché TTL pequeña para un cliente Modbus conectado."""
-
-    def __init__(self, cache_ttl: float = CONNECTION_CACHE_TTL) -> None:
-        """Inicializar la caché."""
-        self._cached_client: AsyncModbusTcpClient | None = None
-        self._cache_expiry = 0.0
-        self._cache_ttl = cache_ttl
-        self._last_health_check = 0.0
-
-    def get_cached_client(self) -> AsyncModbusTcpClient | None:
-        """Devolver un cliente conectado cacheado si sigue sano."""
-        now = time.monotonic()
-        if self._cached_client is None or now >= self._cache_expiry:
-            return None
-
-        if not self._cached_client.connected:
-            self.invalidate()
-            return None
-
-        if now - self._last_health_check > HEALTH_CHECK_INTERVAL:
-            if not self._cached_client.connected:
-                _LOGGER.debug("La comprobación de salud Modbus ha fallado")
-                return None
-            self._last_health_check = now
-
-        return self._cached_client
-
-    def set_cached_client(self, client: AsyncModbusTcpClient) -> None:
-        """Guardar un cliente conectado."""
-        self._cached_client = client
-        self._cache_expiry = time.monotonic() + self._cache_ttl
-        self._last_health_check = time.monotonic()
-
-    def invalidate(self) -> None:
-        """Invalidar el estado de conexión cacheado."""
-        self._cached_client = None
-        self._cache_expiry = 0.0
-        self._last_health_check = 0.0
+# Exception codes that do not depend on the session. They are kept in the
+# error text so diagnostics show why a block was rejected.
+EXCEPTION_CODE_NAMES = {
+    1: "illegal function",
+    2: "illegal data address",
+    3: "illegal data value",
+    4: "server device failure",
+    6: "server device busy",
+    10: "gateway path unavailable",
+    11: "gateway target failed to respond",
+}
 
 
 class ModbusConnectionManager:
-    """Gestor de conexión e I/O Modbus de una sola trama cada vez."""
+    """Own the single Modbus TCP session to one AS1 endpoint.
+
+    The AIO3 WiFi stick tolerates one client at a time and becomes unstable
+    when PyModbus reconnects on its own, so the session is opened on demand,
+    every operation is serialized, PyModbus auto-reconnect is disabled and the
+    coordinator closes the session at the end of every poll cycle.
+    """
 
     def __init__(
         self,
-        hass: HomeAssistant,
         host: str,
         port: int,
         device_id: int,
-        timeout: int = 10,
+        timeout: float = MODBUS_TIMEOUT,
     ) -> None:
-        """Inicializar el gestor de conexión."""
-        self.hass = hass
+        """Initialize the connection manager."""
         self._host = host
         self._port = port
         self._device_id = device_id
@@ -89,243 +65,185 @@ class ModbusConnectionManager:
         self._client: AsyncModbusTcpClient | None = None
         self._connection_lock = asyncio.Lock()
         self._io_lock = asyncio.Lock()
-        self._reconnecting = False
-        self._connection_cache = ConnectionCache()
 
     @property
     def host(self) -> str:
-        """Devolver el host configurado."""
+        """Return the configured host."""
         return self._host
 
     @property
     def port(self) -> int:
-        """Devolver el puerto configurado."""
+        """Return the configured port."""
         return self._port
 
     @property
     def device_id(self) -> int:
-        """Devolver el ID de dispositivo Modbus configurado."""
+        """Return the configured Modbus device id."""
         return self._device_id
 
     @property
     def connected(self) -> bool:
-        """Indicar si el cliente actual está conectado."""
+        """Return whether a session is currently open."""
         return self._client is not None and self._client.connected
 
-    async def get_client(self) -> AsyncModbusTcpClient:
-        """Devolver un cliente conectado, reconectando si hace falta."""
-        cached_client = self._connection_cache.get_cached_client()
-        if cached_client is not None:
-            return cached_client
-
-        async with self._connection_lock:
-            cached_client = self._connection_cache.get_cached_client()
-            if cached_client is not None:
-                return cached_client
-
-            try:
-                self._client = await self._connect_with_retries()
-            except MaxRetriesExceededError as err:
-                raise ReconnectionNeededError(str(err)) from err
-            self._connection_cache.set_cached_client(self._client)
-            return self._client
-
     async def read_registers(self, address: int, count: int) -> list[int]:
-        """Leer registros holding del ID de dispositivo configurado."""
-        try:
-            result = await self._read_registers_once(address, count)
-        except ModbusException as err:
-            self._discard_client()
-            raise ReconnectionNeededError(str(err)) from err
-
-        if self._response_is_error(result):
-            self._discard_client()
-            raise ModbusReadError(f"Read failed at 0x{address:04X}")
-
-        registers = getattr(result, "registers", None)
-        if registers is None:
-            self._discard_client()
-            raise ModbusReadError(f"Read returned no registers at 0x{address:04X}")
-        return list(registers)
-
-    async def write_register(self, address: int, value: int) -> None:
-        """Escribir un registro holding en el ID de dispositivo configurado."""
-        last_error: Exception | None = None
-        for attempt in range(2):
+        """Read holding registers from the configured device id."""
+        client = await self._get_client()
+        async with self._io_lock:
             try:
-                result = await self._write_register_once(address, value)
-            except (ModbusException, ReconnectionNeededError) as err:
-                last_error = err
-                self._discard_client()
-                if attempt == 0:
-                    await asyncio.sleep(INITIAL_BACKOFF)
-                    continue
-                raise ReconnectionNeededError(str(err)) from err
+                if not client.connected:
+                    raise ReconnectionNeededError("Modbus session is not connected")
+                result = await client.read_holding_registers(
+                    address=address,
+                    count=count,
+                    device_id=self._device_id,
+                )
+            except (ModbusException, OSError, ReconnectionNeededError) as err:
+                self._discard_client_unlocked()
+                raise ReconnectionNeededError(
+                    f"Read failed at 0x{address:04X}: {err}"
+                ) from err
 
             if self._response_is_error(result):
-                last_error = ModbusWriteError(f"Write failed at 0x{address:04X}")
-                self._discard_client()
-                if attempt == 0:
-                    await asyncio.sleep(INITIAL_BACKOFF)
-                    continue
-                raise last_error
-            return
+                self._discard_client_unlocked()
+                raise ModbusReadError(
+                    f"Read rejected at 0x{address:04X}{self._describe_error(result)}"
+                )
 
-        raise ModbusWriteError(f"Write failed at 0x{address:04X}: {last_error}")
+            registers = getattr(result, "registers", None)
+            if registers is None or len(registers) < count:
+                self._discard_client_unlocked()
+                raise ModbusReadError(
+                    f"Read returned too few registers at 0x{address:04X}"
+                )
+            return list(registers[:count])
 
-    async def _read_registers_once(self, address: int, count: int) -> object:
-        """Ejecutar una lectura Modbus con el cliente actual."""
-        client = await self.get_client()
-        async with self._io_lock:
-            if not client.connected:
-                self._discard_client()
-                raise ReconnectionNeededError("Cliente Modbus no conectado")
-            return await client.read_holding_registers(
-                address=address,
-                count=count,
-                device_id=self._device_id,
-            )
+    async def write_register(self, address: int, value: int) -> None:
+        """Write one holding register, retrying once on a broken session.
 
-    async def _write_register_once(self, address: int, value: int) -> object:
-        """Ejecutar una escritura Modbus con el cliente actual."""
-        client = await self.get_client()
-        async with self._io_lock:
-            if not client.connected:
-                self._discard_client()
-                raise ReconnectionNeededError("Cliente Modbus no conectado")
-            return await client.write_register(
-                address=address,
-                value=value,
-                device_id=self._device_id,
-            )
+        A connection that cannot be opened at all is not retried here; the
+        coordinator owns the slow retry policy for that case.
+        """
+        error: Exception | None = None
+        for attempt in range(2):
+            client = await self._get_client()
+            async with self._io_lock:
+                try:
+                    if not client.connected:
+                        raise ReconnectionNeededError("Modbus session is not connected")
+                    result = await client.write_register(
+                        address=address,
+                        value=value,
+                        device_id=self._device_id,
+                    )
+                except (ModbusException, OSError, ReconnectionNeededError) as err:
+                    self._discard_client_unlocked()
+                    error = ReconnectionNeededError(
+                        f"Write failed at 0x{address:04X}: {err}"
+                    )
+                else:
+                    if not self._response_is_error(result):
+                        return
+                    self._discard_client_unlocked()
+                    error = ModbusWriteError(
+                        f"Write rejected at 0x{address:04X}"
+                        f"{self._describe_error(result)}"
+                    )
+            if attempt == 0:
+                await asyncio.sleep(FAST_WRITE_RETRY_DELAY)
+
+        assert error is not None
+        raise error
 
     async def test_connection(self) -> None:
-        """Abrir la conexión y validar que el dispositivo responde."""
-        await self.read_registers(0x4004, 1)
-
-    async def reconnect(self) -> bool:
-        """Forzar una reconexión."""
-        if self._reconnecting:
-            return False
-
-        async with self._connection_lock:
-            if self._reconnecting:
-                return False
-
-            self._reconnecting = True
-            try:
-                self._connection_cache.invalidate()
-                await self.close()
-                self._client = await self._connect_with_retries()
-                self._connection_cache.set_cached_client(self._client)
-                _LOGGER.info("Reconectado a SAJ AS1 en %s:%d", self._host, self._port)
-                return True
-            except Exception as err:
-                _LOGGER.warning("La reconexión con SAJ AS1 ha fallado: %s", err)
-                return False
-            finally:
-                self._reconnecting = False
+        """Open a session and check that the inverter answers a known register."""
+        await self.read_registers(REGISTER_WORKING_MODE, 1)
 
     async def close(self) -> None:
-        """Cerrar el cliente actual si existe."""
+        """Close the current session, waiting for an in-flight operation."""
         async with self._io_lock:
-            self._close_unlocked()
+            self._discard_client_unlocked()
 
-    def _close_unlocked(self) -> None:
-        """Cerrar el cliente actual con la exclusión de I/O ya adquirida."""
-        self._connection_cache.invalidate()
-        if self._client is None:
-            return
-
+    async def _get_client(self) -> AsyncModbusTcpClient:
+        """Return a connected client, opening a new session if needed."""
         client = self._client
-        self._client = None
-        try:
-            client.close()
-        except Exception as err:
-            _LOGGER.debug("Error al cerrar el cliente Modbus: %s", err)
+        if client is not None and client.connected:
+            return client
 
-    def update_config(
-        self,
-        host: str,
-        port: int,
-        device_id: int,
-        timeout: int = 10,
-    ) -> None:
-        """Actualizar parámetros de conexión e invalidar el cliente actual."""
-        if (
-            host == self._host
-            and port == self._port
-            and device_id == self._device_id
-            and timeout == self._timeout
-        ):
-            return
-
-        self._host = host
-        self._port = port
-        self._device_id = device_id
-        self._timeout = timeout
-        self._connection_cache.invalidate()
-        if self._client is not None:
-            self.hass.async_create_task(self.close())
+        async with self._connection_lock:
+            if self._client is not None and self._client.connected:
+                return self._client
+            self._client = await self._connect_with_retries()
+            return self._client
 
     async def _connect_with_retries(self) -> AsyncModbusTcpClient:
-        """Conectar con reintentos exponenciales acotados."""
-        last_exception: Exception | None = None
-
-        for attempt in range(1, MAX_RETRIES + 1):
+        """Open a session with a short, bounded exponential backoff."""
+        last_error: Exception | None = None
+        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+            client = AsyncModbusTcpClient(
+                host=self._host,
+                port=self._port,
+                reconnect_delay=0,
+                reconnect_delay_max=0,
+                timeout=self._timeout,
+                retries=1,
+            )
+            connected = False
             try:
-                if self._client is None:
-                    self._client = AsyncModbusTcpClient(
-                        host=self._host,
-                        port=self._port,
-                        reconnect_delay=0,
-                        reconnect_delay_max=0,
-                        timeout=self._timeout,
-                        retries=1,
-                    )
+                async with asyncio.timeout(self._timeout + CONNECT_TIMEOUT_MARGIN):
+                    connected = await client.connect()
+            except (TimeoutError, OSError, ModbusException) as err:
+                last_error = err
 
-                connected = await self._client.connect()
-                if connected or self._client.connected:
-                    return self._client
+            if connected or client.connected:
+                return client
 
-                raise ConnectionError(f"Unable to connect to {self._host}:{self._port}")
-
-            except (ConnectionError, ModbusIOException, ModbusException) as err:
-                last_exception = err
-                self._discard_client()
-                if attempt >= MAX_RETRIES:
-                    break
-
+            self._close_quietly(client)
+            if attempt < CONNECT_ATTEMPTS:
                 backoff = min(INITIAL_BACKOFF * 2 ** (attempt - 1), MAX_BACKOFF)
                 _LOGGER.debug(
-                    "Modbus connection attempt %d/%d failed, retrying in %.1fs: %s",
+                    "Modbus connection attempt %d/%d to %s:%d failed, retrying in %.1fs",
                     attempt,
-                    MAX_RETRIES,
+                    CONNECT_ATTEMPTS,
+                    self._host,
+                    self._port,
                     backoff,
-                    err,
                 )
                 await asyncio.sleep(backoff)
 
-        raise MaxRetriesExceededError(
-            f"Failed to connect after {MAX_RETRIES} attempts: {last_exception}"
+        detail = f": {last_error}" if last_error else ""
+        raise ConnectFailedError(
+            f"Unable to connect to {self._host}:{self._port} "
+            f"after {CONNECT_ATTEMPTS} attempts{detail}"
         )
 
-    def _discard_client(self) -> None:
-        """Cerrar y descartar un cliente tras un intento de conexión fallido."""
-        if self._client is None:
-            self._connection_cache.invalidate()
-            return
+    def _discard_client_unlocked(self) -> None:
+        """Close and forget the current client. The I/O lock must be held."""
+        client, self._client = self._client, None
+        if client is not None:
+            self._close_quietly(client)
+
+    @staticmethod
+    def _close_quietly(client: AsyncModbusTcpClient) -> None:
+        """Close a client, ignoring errors from an already broken transport."""
         try:
-            self._client.close()
-        except Exception:
-            pass
-        self._client = None
-        self._connection_cache.invalidate()
+            client.close()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Error while closing the Modbus client: %s", err)
 
     @staticmethod
     def _response_is_error(response: object) -> bool:
-        """Indicar si una respuesta de PyModbus representa un error."""
+        """Return whether a PyModbus response is an error response."""
         is_error = getattr(response, "isError", None)
         return isinstance(response, ExceptionResponse) or (
-            callable(is_error) and is_error()
+            callable(is_error) and bool(is_error())
         )
+
+    @staticmethod
+    def _describe_error(response: object) -> str:
+        """Return a short description of a Modbus exception response."""
+        code = getattr(response, "exception_code", None)
+        if not isinstance(code, int):
+            return ""
+        name = EXCEPTION_CODE_NAMES.get(code, "device specific")
+        return f" (exception code {code}: {name})"

@@ -1,4 +1,4 @@
-"""Coordinador de datos para la integración SAJ AS1 Modbus."""
+"""Data update coordinator for the SAJ AS1 Modbus integration."""
 
 from __future__ import annotations
 
@@ -9,9 +9,8 @@ import logging
 import time
 from typing import Any, cast
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -25,13 +24,14 @@ from .const import (
     AIO3_SENSITIVE_RETRIES,
     AIO3_SENSITIVE_RETRY_DELAY,
     AIO3_WRITE_BATCH_DELAY,
-    AIO3_WRITE_SETTLE_DELAY,
     AIO3_WRITE_RETRIES,
     AIO3_WRITE_RETRY_DELAY,
+    AIO3_WRITE_SETTLE_DELAY,
     AIOT_DELAY_MS,
     BAT_ENERGY_CAPACITY_NOMINAL,
     CONF_DEVICE_ID,
     CONFIG_KEYS,
+    CONNECTION_ISSUE_DELAY,
     DEFAULT_DEVICE_ID,
     DOMAIN,
     HIGH_KEYS,
@@ -43,6 +43,7 @@ from .const import (
     MAX_FAILURES_BEFORE_UNAVAILABLE,
     MEDIUM_KEYS,
     MODBUS_TIMEOUT,
+    POLL_CYCLE_TIMEOUT,
     REGISTER_BAT_POWER,
     REGISTER_BAT_SOC,
     REGISTER_BMS_COUNT,
@@ -57,20 +58,24 @@ from .const import (
     REGISTER_RADIATOR_TEMP,
     REGISTER_USER_MODE,
     REGISTER_WORKING_MODE,
-    SCAN_INTERVAL_HIGH,
     SCAN_INTERVAL_CONFIG,
+    SCAN_INTERVAL_HIGH,
     SCAN_INTERVAL_LOW,
     SCAN_INTERVAL_MEDIUM,
+    STALE_DATA_MAX_FAILURES,
+    WEEKDAYS_ALL,
     WORKING_MODES,
 )
 from .exceptions import (
+    ConnectFailedError,
     ModbusReadError,
     ModbusWriteError,
     ReconnectionNeededError,
 )
 from .modbus_processing import (
-    extract_byte_low,
+    extract_byte_high,
     inject_days_weekdays,
+    percentage_from_register,
     read_current,
     read_energy,
     read_percentage,
@@ -80,33 +85,41 @@ from .modbus_processing import (
     read_voltage,
     validate_percentage,
 )
+from .models import SAJConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 ReadMethod = Callable[[], Awaitable[dict[str, Any]]]
 
+SLOT_POWER_REGISTERS = (REGISTER_CHARGE_POWER_PCT, REGISTER_DISCHARGE_POWER_PCT)
+
+
+def connection_issue_id(entry_id: str) -> str:
+    """Return the repair issue id used for one config entry."""
+    return f"{ISSUE_CONNECTION_UNAVAILABLE}_{entry_id}"
+
 
 class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinar todas las lecturas y escrituras Modbus del SAJ AS1."""
+    """Coordinate every Modbus read and write of one SAJ AS1."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Inicializar el coordinador."""
-        self._hass = hass
-        self.entry = entry
+    config_entry: SAJConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: SAJConfigEntry) -> None:
+        """Initialize the coordinator."""
         self.host: str = entry.data[CONF_HOST]
         self.port: int = entry.data[CONF_PORT]
         self.device_id: int = entry.data.get(CONF_DEVICE_ID, DEFAULT_DEVICE_ID)
 
         self.connection = ModbusConnectionManager(
-            hass=hass,
             host=self.host,
             port=self.port,
             device_id=self.device_id,
             timeout=MODBUS_TIMEOUT,
         )
 
-        self._write_requested = False
         self._pending_writes = 0
+        self._writes_idle = asyncio.Event()
+        self._writes_idle.set()
         self._write_lock = asyncio.Lock()
         self._write_batch_lock = asyncio.Lock()
         self._write_batch_values: dict[int, int] = {}
@@ -125,7 +138,10 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._config_cache: dict[str, Any] = {}
         self._low_cache: dict[str, Any] = {}
         self._last_user_mode: int | None = None
+        # Weekday mask (high byte) last read from each slot power register.
+        self._slot_days: dict[int, int | None] = dict.fromkeys(SLOT_POWER_REGISTERS)
         self._connection_issue_active = False
+        self._disconnected_since: float | None = None
         self._last_update_duration = 0.0
         self._circuit_open_until = 0.0
         self._circuit_open_count = 0
@@ -163,153 +179,186 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN}_{entry.entry_id}",
+            config_entry=entry,
+            name=entry.title,
             update_interval=timedelta(seconds=SCAN_INTERVAL_HIGH),
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Leer datos usando las frecuencias HIGH/MEDIUM/LOW ajustadas al SAJ."""
+        """Read the HIGH/MEDIUM/CONFIG/LOW buckets that are due."""
         now = time.monotonic()
-        started = now
-        data = dict(self.data or {})
-
-        try:
-            if self._circuit_is_open(now):
-                await self.connection.close()
-                await self._set_connected_state(False)
-                if data:
-                    return data
-                raise UpdateFailed("SAJ AS1 circuit breaker open")
-
-            await self._refresh_bucket_if_due(
-                data=data,
-                now=now,
-                interval=SCAN_INTERVAL_HIGH,
-                last_attr="_last_high_update",
-                failures_attr="_high_failures",
-                cache_attr="_high_cache",
-                keys=HIGH_KEYS,
-                fallback=self._zero_high(),
-                reader=self._read_high,
-                label="HIGH",
-            )
-            await self._refresh_bucket_if_due(
-                data=data,
-                now=now,
-                interval=SCAN_INTERVAL_MEDIUM,
-                last_attr="_last_medium_update",
-                failures_attr="_medium_failures",
-                cache_attr="_medium_cache",
-                keys=MEDIUM_KEYS,
-                fallback=self._zero_medium(),
-                reader=self._read_medium,
-                label="MEDIUM",
-            )
-            await self._refresh_bucket_if_due(
-                data=data,
-                now=now,
-                interval=SCAN_INTERVAL_CONFIG,
-                last_attr="_last_config_update",
-                failures_attr="_config_failures",
-                cache_attr="_config_cache",
-                keys=CONFIG_KEYS,
-                fallback=self._zero_config(),
-                reader=self._read_config,
-                label="CONFIG",
-            )
-            await self._refresh_bucket_if_due(
-                data=data,
-                now=now,
-                interval=SCAN_INTERVAL_LOW,
-                last_attr="_last_low_update",
-                failures_attr="_low_failures",
-                cache_attr="_low_cache",
-                keys=LOW_KEYS,
-                fallback=self._zero_low(),
-                reader=self._read_low,
-                label="LOW",
-            )
-
-            self._calc_derived(data)
-            self._last_update_duration = round(time.monotonic() - started, 3)
-            self.consecutive_failures = 0
-            self.last_error_type = None
-            self._circuit_open_until = 0.0
-            await self._set_connected_state(not self.unavailable_keys)
+        if self._circuit_is_open(now):
             await self.connection.close()
-            return data
+            self._set_connected_state(False)
+            raise UpdateFailed(translation_domain=DOMAIN, translation_key="circuit_open")
 
+        data = dict(self.data or {})
+        try:
+            async with asyncio.timeout(POLL_CYCLE_TIMEOUT):
+                await self._refresh_buckets(data, now)
         except ReconnectionNeededError as err:
-            self.consecutive_failures += 1
-            self.last_error_type = str(err)
-            self._open_circuit_if_needed()
             await self.connection.close()
             await asyncio.sleep(AIO3_RECOVERY_DELAY)
-            await self._set_connected_state(False)
-            if self.data:
-                return self.data
-            raise UpdateFailed("Modbus reconnect required") from err
-
-        except Exception as err:
-            self.consecutive_failures += 1
-            self.last_error_type = str(err)
-            self._open_circuit_if_needed()
-            if self.consecutive_failures >= 3:
-                await self._set_connected_state(False)
+            return self._cycle_failed(err, connection_lost=True)
+        except TimeoutError as err:
             await self.connection.close()
-            if self.data:
-                return self.data
-            raise UpdateFailed(f"SAJ AS1 Modbus update failed: {err}") from err
+            _LOGGER.warning(
+                "SAJ AS1 poll cycle exceeded %.0fs and was aborted",
+                POLL_CYCLE_TIMEOUT,
+            )
+            return self._cycle_failed(err, connection_lost=True)
+        except Exception as err:
+            await self.connection.close()
+            return self._cycle_failed(err, connection_lost=False)
+
+        self._calc_derived(data)
+        self._last_update_duration = round(time.monotonic() - now, 3)
+        self.consecutive_failures = 0
+        self.last_error_type = None
+        self._circuit_open_until = 0.0
+        self._set_connected_state(not self.unavailable_keys)
+        await self.connection.close()
+        return data
+
+    async def _refresh_buckets(self, data: dict[str, Any], now: float) -> None:
+        """Refresh every bucket whose interval has elapsed."""
+        await self._refresh_bucket_if_due(
+            data=data,
+            now=now,
+            interval=SCAN_INTERVAL_HIGH,
+            last_attr="_last_high_update",
+            failures_attr="_high_failures",
+            cache_attr="_high_cache",
+            keys=HIGH_KEYS,
+            reader=self._read_high,
+            label="HIGH",
+        )
+        await self._refresh_bucket_if_due(
+            data=data,
+            now=now,
+            interval=SCAN_INTERVAL_MEDIUM,
+            last_attr="_last_medium_update",
+            failures_attr="_medium_failures",
+            cache_attr="_medium_cache",
+            keys=MEDIUM_KEYS,
+            reader=self._read_medium,
+            label="MEDIUM",
+        )
+        await self._refresh_bucket_if_due(
+            data=data,
+            now=now,
+            interval=SCAN_INTERVAL_CONFIG,
+            last_attr="_last_config_update",
+            failures_attr="_config_failures",
+            cache_attr="_config_cache",
+            keys=CONFIG_KEYS,
+            reader=self._read_config,
+            label="CONFIG",
+        )
+        await self._refresh_bucket_if_due(
+            data=data,
+            now=now,
+            interval=SCAN_INTERVAL_LOW,
+            last_attr="_last_low_update",
+            failures_attr="_low_failures",
+            cache_attr="_low_cache",
+            keys=LOW_KEYS,
+            reader=self._read_low,
+            label="LOW",
+        )
+
+    def _cycle_failed(self, err: Exception, *, connection_lost: bool) -> dict[str, Any]:
+        """Keep the last values through short outages, then fail the update.
+
+        Returning stale data forever would leave power sensors frozen while the
+        inverter is offline, so from STALE_DATA_MAX_FAILURES consecutive failed
+        cycles on the entities become unavailable.
+        """
+        self.consecutive_failures += 1
+        self.last_error_type = str(err) or type(err).__name__
+        self._open_circuit_if_needed()
+        if connection_lost or self.consecutive_failures >= STALE_DATA_MAX_FAILURES:
+            self._set_connected_state(False)
+
+        if self.data and self.consecutive_failures < STALE_DATA_MAX_FAILURES:
+            _LOGGER.debug(
+                "SAJ AS1 update failed (%d/%d), keeping the last values: %s",
+                self.consecutive_failures,
+                STALE_DATA_MAX_FAILURES,
+                self.last_error_type,
+            )
+            return self.data
+
+        raise UpdateFailed(
+            translation_domain=DOMAIN,
+            translation_key="update_failed",
+            translation_placeholders={"error": self.last_error_type},
+        ) from err
 
     async def async_write_register(self, address: int, value: int) -> bool:
-        """Escribir un registro y actualizar caché de forma optimista."""
+        """Queue a register write and update the cache once it succeeds."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[bool] = loop.create_future()
 
-        self._pending_writes += 1
-        self._write_requested = True
+        self._begin_write()
         try:
             async with self._write_batch_lock:
                 self._write_batch_values[address] = value
                 self._write_batch_futures.setdefault(address, []).append(future)
                 if self._write_batch_task is None or self._write_batch_task.done():
-                    self._write_batch_task = self._hass.async_create_task(
-                        self._flush_write_batch()
-                    )
+                    self._write_batch_task = self._create_write_batch_task()
 
             return await future
 
         finally:
-            self._pending_writes = max(0, self._pending_writes - 1)
-            self._write_requested = self._pending_writes > 0
+            self._end_write()
+
+    def _create_write_batch_task(self) -> asyncio.Task[None]:
+        """Start a write batch tied to the config entry lifetime."""
+        return self.config_entry.async_create_background_task(
+            self.hass,
+            self._flush_write_batch(),
+            f"{DOMAIN}_write_batch_{self.config_entry.entry_id}",
+        )
 
     async def _flush_write_batch(self) -> None:
-        """Aplicar escrituras pendientes como un lote estilo Elekeeper."""
-        await asyncio.sleep(AIO3_WRITE_BATCH_DELAY)
+        """Apply queued writes as one batch, like the Elekeeper app does."""
+        batch_futures: dict[int, list[asyncio.Future[bool]]] = {}
+        try:
+            await asyncio.sleep(AIO3_WRITE_BATCH_DELAY)
 
-        async with self._write_lock:
-            async with self._write_batch_lock:
-                batch_values = dict(self._write_batch_values)
-                batch_futures = {
-                    address: list(futures)
-                    for address, futures in self._write_batch_futures.items()
-                }
-                self._write_batch_values.clear()
-                self._write_batch_futures.clear()
+            async with self._write_lock:
+                async with self._write_batch_lock:
+                    batch_values = dict(self._write_batch_values)
+                    batch_futures = {
+                        address: list(futures)
+                        for address, futures in self._write_batch_futures.items()
+                    }
+                    self._write_batch_values.clear()
+                    self._write_batch_futures.clear()
 
-            results = await self._apply_write_batch(batch_values)
+                results = await self._apply_write_batch(batch_values)
 
-            for address, futures in batch_futures.items():
-                result = results.get(address, False)
+                for address, futures in batch_futures.items():
+                    result = results.get(address, False)
+                    for future in futures:
+                        if not future.done():
+                            future.set_result(result)
+        except asyncio.CancelledError:
+            # Unloading cancels the batch. Resolve every caller so no service
+            # call or entity action waits forever.
+            pending = [*batch_futures.values(), *self._write_batch_futures.values()]
+            for futures in pending:
                 for future in futures:
                     if not future.done():
-                        future.set_result(result)
+                        future.set_result(False)
+            self._write_batch_values.clear()
+            self._write_batch_futures.clear()
+            raise
 
         async with self._write_batch_lock:
             if self._write_batch_values:
-                self._write_batch_task = self._hass.async_create_task(
-                    self._flush_write_batch()
-                )
+                self._write_batch_task = self._create_write_batch_task()
             else:
                 self._write_batch_task = None
 
@@ -320,7 +369,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         discharge_power_pct: int | None = None,
         user_mode: int | None = None,
     ) -> bool:
-        """Aplicar un perfil completo en una sola llamada de servicio."""
+        """Apply a complete profile in a single action call."""
         batch_values: dict[int, int] = {}
         if charge_power_pct is not None:
             batch_values[REGISTER_CHARGE_POWER_PCT] = charge_power_pct
@@ -332,18 +381,16 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not batch_values:
             return True
 
-        self._pending_writes += 1
-        self._write_requested = True
+        self._begin_write()
         try:
             async with self._write_lock:
                 results = await self._apply_write_batch(batch_values)
             return all(results.get(address, False) for address in batch_values)
         finally:
-            self._pending_writes = max(0, self._pending_writes - 1)
-            self._write_requested = self._pending_writes > 0
+            self._end_write()
 
     async def _apply_write_batch(self, batch_values: dict[int, int]) -> dict[int, bool]:
-        """Escribir un lote de registros con una sola ventana de asentamiento."""
+        """Write a batch of registers with a single settle window."""
         if not batch_values:
             return {}
 
@@ -382,7 +429,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await asyncio.sleep(AIO3_WRITE_SETTLE_DELAY)
 
             if any(results.values()):
-                await self._set_connected_state(True)
+                self._set_connected_state(True)
             return results
 
         except Exception as err:
@@ -390,10 +437,10 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("SAJ AS1 write batch failed: %s", err)
             await self.connection.close()
             await asyncio.sleep(AIO3_RECOVERY_DELAY)
-            return {address: False for address in batch_values}
+            return dict.fromkeys(batch_values, False)
 
     def _ordered_write_addresses(self, batch_values: dict[int, int]) -> list[int]:
-        """Ordenar escrituras: potencias primero y modo al final."""
+        """Order writes: power percentages first, user mode last."""
         preferred_order = (
             REGISTER_CHARGE_POWER_PCT,
             REGISTER_DISCHARGE_POWER_PCT,
@@ -403,17 +450,22 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ordered.extend(address for address in batch_values if address not in ordered)
         return ordered
 
-    @staticmethod
-    def _prepare_write_value(address: int, value: int) -> tuple[int, int]:
-        """Preparar valor Modbus y valor de cache para un registro."""
-        if address in (REGISTER_CHARGE_POWER_PCT, REGISTER_DISCHARGE_POWER_PCT):
-            cache_value = validate_percentage(value & 0xFF)
-            return inject_days_weekdays(cache_value), cache_value
+    def _prepare_write_value(self, address: int, value: int) -> tuple[int, int]:
+        """Return the Modbus value to write and the value to cache."""
+        if address in SLOT_POWER_REGISTERS:
+            percentage = validate_percentage(value & 0xFF)
+            days = self._slot_days.get(address)
+            return (
+                inject_days_weekdays(
+                    percentage, WEEKDAYS_ALL if days is None else days
+                ),
+                percentage,
+            )
 
         return value, value
 
     async def _write_register_with_recovery(self, address: int, value: int) -> None:
-        """Escribir con reintento lento para registros delicados del AIO3."""
+        """Write with a slow retry for the sensitive AIO3 registers."""
         last_error: Exception | None = None
         for attempt in range(1, AIO3_WRITE_RETRIES + 1):
             try:
@@ -447,11 +499,15 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         failures_attr: str,
         cache_attr: str,
         keys: tuple[str, ...],
-        fallback: dict[str, Any],
         reader: ReadMethod,
         label: str,
     ) -> None:
-        """Actualizar un grupo de lectura o reutilizar su caché."""
+        """Refresh one bucket or reuse its cache.
+
+        A bucket that has never been read successfully publishes nothing, so
+        its entities stay unknown instead of reporting zeros. A zero would be
+        recorded as a meter reset by the energy dashboard.
+        """
         cache: dict[str, Any] = getattr(self, cache_attr)
         last_update: float = getattr(self, last_attr)
         due = now - last_update >= interval or not cache
@@ -503,10 +559,10 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     label,
                     failures,
                 )
-        data.update(cache or fallback)
+        data.update(cache)
 
     def diagnostic_polling(self) -> dict[str, Any]:
-        """Devolver metricas de polling utiles para diagnostico."""
+        """Return polling metrics for diagnostics."""
         now = time.monotonic()
         bucket_specs = {
             "HIGH": {
@@ -563,11 +619,11 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     def _circuit_is_open(self, now: float) -> bool:
-        """Indicar si el circuito esta abierto por fallos globales recientes."""
+        """Return whether the cooldown after repeated failures is active."""
         return now < self._circuit_open_until
 
     def _open_circuit_if_needed(self) -> None:
-        """Abrir un cooldown breve tras fallos globales consecutivos."""
+        """Open a short cooldown after consecutive global failures."""
         if self.consecutive_failures < AIO3_CIRCUIT_BREAKER_FAILURES:
             return
 
@@ -583,7 +639,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _read_high(self) -> dict[str, Any]:
-        """Leer potencias y SOC de alta frecuencia."""
+        """Read power values and SOC (high frequency)."""
         await self._wait_for_write_priority()
         bat_power_regs = await self.connection.read_registers(REGISTER_BAT_POWER, 1)
         battery_power = read_power(bat_power_regs, 0) * -1
@@ -623,34 +679,37 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _read_medium(self) -> dict[str, Any]:
-        """Leer estado, BMS y configuración de frecuencia media."""
+        """Read status, BMS and grid L1 values (medium frequency)."""
         data: dict[str, Any] = {}
 
         await self._wait_for_write_priority()
         mode_regs = await self.connection.read_registers(REGISTER_WORKING_MODE, 1)
         working_mode = read_uint16(mode_regs, 0)
         data["working_mode"] = working_mode
-        data["working_mode_name"] = WORKING_MODES.get(
-            working_mode,
-            f"Unknown ({working_mode})",
-        )
+        data["working_mode_name"] = WORKING_MODES.get(working_mode)
+        if data["working_mode_name"] is None:
+            _LOGGER.debug("Unknown SAJ AS1 working mode value: %s", working_mode)
 
         await self._delay_between_blocks()
+        await self._wait_for_write_priority()
         data["error_count"] = read_uint16(
             await self.connection.read_registers(REGISTER_ERROR_COUNT, 1),
             0,
         )
 
         await self._delay_between_blocks()
+        await self._wait_for_write_priority()
         data["radiator_temp"] = read_temperature(
             await self.connection.read_registers(REGISTER_RADIATOR_TEMP, 1),
             0,
         )
 
         await self._delay_between_blocks()
+        await self._wait_for_write_priority()
         data.update(await self._read_grid_l1_status())
 
         await self._delay_between_blocks()
+        await self._wait_for_write_priority()
         bms_regs = await self.connection.read_registers(
             REGISTER_BMS_START,
             REGISTER_BMS_COUNT,
@@ -669,12 +728,14 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return data
 
     async def _read_grid_l1_status(self) -> dict[str, float]:
-        """Leer tension, corriente y frecuencia L1 sin romper el bucket MEDIUM."""
+        """Read L1 voltage, current and frequency without failing MEDIUM."""
         try:
             regs = await self.connection.read_registers(
                 REGISTER_GRID_L1_STATUS_START,
                 REGISTER_GRID_L1_STATUS_COUNT,
             )
+        except ConnectFailedError:
+            raise
         except (ModbusReadError, ReconnectionNeededError) as err:
             _LOGGER.debug("Grid L1 status block failed: %s", err)
             current_data = self.data or {}
@@ -692,35 +753,31 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _read_config(self) -> dict[str, Any]:
-        """Leer configuración de usuario de baja variación."""
+        """Read the user configuration registers (slow)."""
         data: dict[str, Any] = {}
 
         await self._wait_for_write_priority()
         await self._delay_between_blocks()
         data["user_mode"] = await self._read_user_mode_with_retry()
 
-        await self._delay_between_blocks()
-        charge_regs = await self._read_sensitive_register(
-            REGISTER_CHARGE_POWER_PCT,
-            "Potencia de carga",
-        )
-        data["first_charge_power_pct"] = validate_percentage(
-            extract_byte_low(read_uint16(charge_regs, 0))
-        )
-
-        await self._delay_between_blocks()
-        discharge_regs = await self._read_sensitive_register(
-            REGISTER_DISCHARGE_POWER_PCT,
-            "Potencia de descarga",
-        )
-        data["first_discharge_power_pct"] = validate_percentage(
-            extract_byte_low(read_uint16(discharge_regs, 0))
-        )
+        for address, key, label in (
+            (REGISTER_CHARGE_POWER_PCT, "first_charge_power_pct", "Charge power"),
+            (
+                REGISTER_DISCHARGE_POWER_PCT,
+                "first_discharge_power_pct",
+                "Discharge power",
+            ),
+        ):
+            await self._delay_between_blocks()
+            await self._wait_for_write_priority()
+            raw = read_uint16(await self._read_sensitive_register(address, label), 0)
+            self._slot_days[address] = extract_byte_high(raw)
+            data[key] = percentage_from_register(raw)
 
         return data
 
     async def _read_low(self) -> dict[str, Any]:
-        """Leer contadores de energía acumulada de baja frecuencia."""
+        """Read accumulated energy counters (slow)."""
         await self._wait_for_write_priority()
         regs = await self.connection.read_registers(
             LOW_ENERGY_BLOCK_START,
@@ -730,33 +787,36 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @staticmethod
     def _energy_data_from_block(regs: list[int]) -> dict[str, float]:
-        """Extraer energías acumuladas desde el bloque LOW contiguo."""
+        """Extract accumulated energies from the contiguous LOW block."""
         return {
             key: read_energy(regs, address - LOW_ENERGY_BLOCK_START)
             for key, address in LOW_ENERGY_REGISTERS.items()
         }
 
     async def _read_user_mode_with_retry(self) -> int | None:
-        """Leer modo de usuario con reintentos acotados."""
+        """Read the user mode, falling back to the last known value."""
         try:
-            regs = await self._read_sensitive_register(
-                REGISTER_USER_MODE,
-                "Modo de usuario",
-            )
+            regs = await self._read_sensitive_register(REGISTER_USER_MODE, "User mode")
             user_mode = read_uint16(regs, 0)
             self._last_user_mode = user_mode
             return user_mode
         except ModbusReadError as err:
-            _LOGGER.debug("No se pudo leer el modo de usuario: %s", err)
+            _LOGGER.debug("User mode could not be read: %s", err)
 
         return self._last_user_mode
 
     async def _read_sensitive_register(self, address: int, label: str) -> list[int]:
-        """Leer un registro sensible con reintentos para AIO3 WiFi."""
+        """Read a sensitive AIO3 register, retrying a broken session.
+
+        An unreachable host is not retried: each retry would run the whole
+        connect sequence again.
+        """
         last_error: Exception | None = None
         for attempt in range(1, AIO3_SENSITIVE_RETRIES + 1):
             try:
                 return await self.connection.read_registers(address, 1)
+            except ConnectFailedError:
+                raise
             except (ModbusReadError, ReconnectionNeededError) as err:
                 last_error = err
                 _LOGGER.debug(
@@ -775,14 +835,12 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _update_write_cache(self, address: int, value: int) -> None:
-        """Aplicar una escritura correcta a las cachés del coordinador."""
+        """Apply a successful write to the coordinator caches."""
         key: str | None = None
         if address == REGISTER_CHARGE_POWER_PCT:
             key = "first_charge_power_pct"
-            value = validate_percentage(value)
         elif address == REGISTER_DISCHARGE_POWER_PCT:
             key = "first_discharge_power_pct"
-            value = validate_percentage(value)
         elif address == REGISTER_USER_MODE:
             key = "user_mode"
             self._last_user_mode = value
@@ -796,121 +854,103 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.unavailable_keys.discard(key)
         self.async_set_updated_data(current_data)
 
+    def _begin_write(self) -> None:
+        """Register a pending write so new read blocks wait for it."""
+        self._pending_writes += 1
+        self._writes_idle.clear()
+
+    def _end_write(self) -> None:
+        """Release a pending write and wake the readers when none is left."""
+        self._pending_writes = max(0, self._pending_writes - 1)
+        if self._pending_writes == 0:
+            self._writes_idle.set()
+
     async def _wait_for_write_priority(self) -> None:
-        """Pausar nuevos bloques de lectura si hay escritura pendiente."""
-        while self._write_requested:
-            await asyncio.sleep(0.01)
+        """Pause new read blocks while a write is pending."""
+        await self._writes_idle.wait()
 
     async def _delay_between_blocks(self) -> None:
-        """Esperar entre bloques Modbus para proteger el stick AS1."""
+        """Wait between Modbus blocks to protect the AIO3 stick."""
         await asyncio.sleep(AIOT_DELAY_MS / 1000.0)
 
-    def _calc_derived(self, data: dict[str, Any]) -> None:
-        """Calcular capacidad real y tiempos derivados de batería."""
-        soh = data.get("bat1_soh", 100.0)
-        soc = data.get("bat1_soc", 0.0)
-        battery_power = data.get("battery_power", 0)
+    @staticmethod
+    def _calc_derived(data: dict[str, Any]) -> None:
+        """Calculate real battery capacity and charge/discharge times.
 
-        capacity_real_kwh = BAT_ENERGY_CAPACITY_NOMINAL * (soh / 100.0)
-        data["battery_capacity_real"] = round(capacity_real_kwh, 2)
+        Values that cannot be calculated are None, so the sensors show unknown
+        instead of a misleading 0.
+        """
+        soh = data.get("bat1_soh")
+        soc = data.get("bat1_soc")
+        battery_power = data.get("battery_power")
+        bat_number = data.get("bat_number")
+        modules = bat_number if isinstance(bat_number, int) and bat_number > 0 else 1
+
+        capacity_real_kwh: float | None = None
+        if isinstance(soh, int | float):
+            capacity_real_kwh = BAT_ENERGY_CAPACITY_NOMINAL * modules * soh / 100.0
+        data["battery_capacity_real"] = (
+            None if capacity_real_kwh is None else round(capacity_real_kwh, 2)
+        )
+
+        data["battery_time_to_full"] = None
+        data["battery_time_to_empty"] = None
+        if (
+            capacity_real_kwh is None
+            or not isinstance(soc, int | float)
+            or not isinstance(battery_power, int | float)
+        ):
+            return
 
         if battery_power > 10:
             remaining_capacity = capacity_real_kwh * (100 - soc) / 100
             data["battery_time_to_full"] = round(
-                remaining_capacity / (battery_power / 1000.0),
-                1,
+                remaining_capacity / (battery_power / 1000.0), 1
             )
-        else:
-            data["battery_time_to_full"] = 0.0
-
-        if battery_power < -10:
+        elif battery_power < -10:
             usable_capacity = capacity_real_kwh * soc / 100
             data["battery_time_to_empty"] = round(
-                usable_capacity / (abs(battery_power) / 1000.0),
-                1,
+                usable_capacity / (abs(battery_power) / 1000.0), 1
             )
-        else:
-            data["battery_time_to_empty"] = 0.0
 
-    async def _set_connected_state(self, connected: bool) -> None:
-        """Actualizar conexión, logs y estado de reparación."""
+    @callback
+    def _set_connected_state(self, connected: bool) -> None:
+        """Track the connection state and raise a repair after long outages."""
         previous = self.is_connected
         self.is_connected = connected
-        if connected == previous and connected != self._connection_issue_active:
-            return
+        issue_id = connection_issue_id(self.config_entry.entry_id)
 
         if connected:
-            if not previous:
-                _LOGGER.info("Conexión SAJ AS1 Modbus recuperada")
-            self._connection_issue_active = False
-            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_CONNECTION_UNAVAILABLE)
+            if self._disconnected_since is not None:
+                _LOGGER.info("SAJ AS1 Modbus connection restored")
+            self._disconnected_since = None
+            if self._connection_issue_active:
+                self._connection_issue_active = False
+                ir.async_delete_issue(self.hass, DOMAIN, issue_id)
             return
 
-        if previous:
-            _LOGGER.warning("Conexión SAJ AS1 Modbus no disponible")
-        self._connection_issue_active = True
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            ISSUE_CONNECTION_UNAVAILABLE,
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key=ISSUE_CONNECTION_UNAVAILABLE,
-            translation_placeholders={"host": self.host},
-        )
+        now = time.monotonic()
+        if self._disconnected_since is None:
+            self._disconnected_since = now
+            if previous:
+                _LOGGER.warning("SAJ AS1 Modbus connection unavailable")
 
-    @staticmethod
-    def _zero_high() -> dict[str, Any]:
-        """Devolver valores fallback de alta frecuencia."""
-        return {
-            "battery_power": 0,
-            "battery_power_signed": 0,
-            "bat1_soc": 0.0,
-            "grid_import_power": 0,
-            "grid_export_power": 0,
-            "grid_power_signed": 0,
-            "battery_charging_power": 0,
-            "battery_discharging_power": 0,
-            "total_load_power": 0,
-            "total_pv_power": 0,
-        }
-
-    @staticmethod
-    def _zero_medium() -> dict[str, Any]:
-        """Devolver valores fallback de frecuencia media."""
-        return {
-            "working_mode": 0,
-            "working_mode_name": "Standby",
-            "error_count": 0,
-            "radiator_temp": 0.0,
-            "grid_voltage_l1": 0.0,
-            "grid_current_l1": 0.0,
-            "grid_frequency_l1": 0.0,
-            "bat_number": 0,
-            "bat1_soh": 100.0,
-            "bat1_voltage": 0.0,
-            "bat1_current": 0.0,
-            "bat1_temp": 0.0,
-            "bat1_cycles": 0,
-        }
-
-    @staticmethod
-    def _zero_config() -> dict[str, Any]:
-        """Devolver valores fallback de configuración."""
-        return {
-            "user_mode": None,
-            "first_charge_power_pct": 100,
-            "first_discharge_power_pct": 100,
-        }
-
-    @staticmethod
-    def _zero_low() -> dict[str, Any]:
-        """Devolver valores fallback de baja frecuencia."""
-        return {
-            "total_pv_energy": 0.0,
-            "total_battery_charge_energy": 0.0,
-            "total_battery_discharge_energy": 0.0,
-            "total_load_energy": 0.0,
-            "total_grid_export_energy": 0.0,
-            "total_grid_import_energy": 0.0,
-        }
+        if (
+            not self._connection_issue_active
+            and now - self._disconnected_since >= CONNECTION_ISSUE_DELAY
+        ):
+            self._connection_issue_active = True
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=ISSUE_CONNECTION_UNAVAILABLE,
+                translation_placeholders={
+                    "name": self.config_entry.title,
+                    "host": self.host,
+                    "port": str(self.port),
+                    "minutes": str(int(CONNECTION_ISSUE_DELAY // 60)),
+                },
+            )

@@ -1,0 +1,233 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up SAJ AS1 Modbus",
+        "description": "Enter the Modbus TCP connection details of the SAJ AS1 inverter.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "device_id": "Modbus device ID"
+        },
+        "data_description": {
+          "host": "IP address or host name of the SAJ AS1 Modbus TCP endpoint (for example the AIO3 stick).",
+          "port": "TCP port used by Modbus. The default is 502.",
+          "device_id": "Modbus device ID (unit ID) of the inverter. The default is 1."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure SAJ AS1 Modbus",
+        "description": "Update the Modbus TCP connection details of the SAJ AS1 inverter.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "device_id": "Modbus device ID"
+        },
+        "data_description": {
+          "host": "IP address or host name of the SAJ AS1 Modbus TCP endpoint (for example the AIO3 stick).",
+          "port": "TCP port used by Modbus. The default is 502.",
+          "device_id": "Modbus device ID (unit ID) of the inverter. The default is 1."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the SAJ AS1 inverter.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This SAJ AS1 inverter is already configured.",
+      "reconfigure_successful": "The connection was updated successfully."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_pv_power": {
+        "name": "Total PV power"
+      },
+      "total_load_power": {
+        "name": "House power"
+      },
+      "grid_import_power": {
+        "name": "Grid import power"
+      },
+      "grid_export_power": {
+        "name": "Grid export power"
+      },
+      "grid_power_signed": {
+        "name": "Net grid power"
+      },
+      "grid_voltage_l1": {
+        "name": "Grid voltage L1"
+      },
+      "grid_current_l1": {
+        "name": "Grid current L1"
+      },
+      "grid_frequency_l1": {
+        "name": "Grid frequency L1"
+      },
+      "battery_charging_power": {
+        "name": "Battery charging power"
+      },
+      "battery_discharging_power": {
+        "name": "Battery discharging power"
+      },
+      "battery_power_signed": {
+        "name": "Net battery power"
+      },
+      "bat1_soc": {
+        "name": "Battery state of charge"
+      },
+      "total_pv_energy": {
+        "name": "Total PV energy"
+      },
+      "total_battery_charge_energy": {
+        "name": "Total battery charge energy"
+      },
+      "total_battery_discharge_energy": {
+        "name": "Total battery discharge energy"
+      },
+      "total_load_energy": {
+        "name": "Total house energy"
+      },
+      "total_grid_import_energy": {
+        "name": "Total grid import energy"
+      },
+      "total_grid_export_energy": {
+        "name": "Total grid export energy"
+      },
+      "bat1_soh": {
+        "name": "Battery state of health"
+      },
+      "bat1_voltage": {
+        "name": "Battery voltage"
+      },
+      "bat1_current": {
+        "name": "Battery current"
+      },
+      "bat1_temp": {
+        "name": "Battery temperature"
+      },
+      "bat1_cycles": {
+        "name": "Battery cycles"
+      },
+      "radiator_temp": {
+        "name": "Heat sink temperature"
+      },
+      "error_count": {
+        "name": "Error count"
+      },
+      "working_mode_name": {
+        "name": "Working mode",
+        "state": {
+          "standby": "Standby",
+          "self_use": "Self-use",
+          "peak_shaving": "Peak shaving",
+          "backup": "Backup",
+          "off_grid": "Off-grid"
+        }
+      },
+      "battery_capacity_real": {
+        "name": "Real battery capacity"
+      },
+      "battery_time_to_full": {
+        "name": "Time to full charge"
+      },
+      "battery_time_to_empty": {
+        "name": "Time to empty"
+      },
+      "bat_number": {
+        "name": "Number of batteries"
+      }
+    },
+    "number": {
+      "first_charge_power_pct": {
+        "name": "First slot charge power"
+      },
+      "first_discharge_power_pct": {
+        "name": "First slot discharge power"
+      }
+    },
+    "select": {
+      "user_mode": {
+        "name": "User mode",
+        "state": {
+          "self_use": "Self-use",
+          "time_of_use": "Time of use",
+          "backup": "Backup",
+          "manual": "Manual"
+        }
+      }
+    },
+    "binary_sensor": {
+      "is_connected": {
+        "name": "Connection state"
+      }
+    }
+  },
+  "issues": {
+    "connection_unavailable": {
+      "title": "{name} has been unreachable for {minutes} minutes",
+      "description": "Home Assistant has not been able to read the SAJ AS1 inverter at {host}:{port} for {minutes} minutes. Its sensors stay unavailable and battery settings cannot be changed until the connection is back.\n\n1. Check that the AIO3 stick (or Modbus TCP gateway) is powered and connected to your network, for example in the SAJ app or your router.\n2. Make sure no other Modbus client is polling the stick at the same time.\n3. If the address of the stick changed, open the SAJ AS1 Modbus integration and choose **Reconfigure** to enter the new address.\n4. If the stick does not answer at all, power cycle the inverter or the stick.\n\nThis message disappears automatically once the inverter answers again."
+    }
+  },
+  "exceptions": {
+    "write_failed": {
+      "message": "Could not write register {address} to the SAJ AS1 inverter."
+    },
+    "profile_requires_value": {
+      "message": "Provide at least one SAJ AS1 profile value."
+    },
+    "profile_write_failed": {
+      "message": "Could not apply the SAJ AS1 profile."
+    },
+    "invalid_user_mode": {
+      "message": "Invalid user mode: {mode}."
+    },
+    "update_failed": {
+      "message": "Could not read the SAJ AS1 inverter: {error}"
+    },
+    "circuit_open": {
+      "message": "Pausing SAJ AS1 polling after repeated connection failures."
+    },
+    "entry_required": {
+      "message": "Several SAJ AS1 inverters are set up. Select the one to configure."
+    },
+    "entry_not_loaded": {
+      "message": "No SAJ AS1 inverter is loaded."
+    }
+  },
+  "services": {
+    "set_profile": {
+      "name": "Set SAJ AS1 profile",
+      "description": "Sets the user mode and the first slot charge and discharge power in one Modbus batch. Intended for automations.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Inverter",
+          "description": "SAJ AS1 inverter to configure. Only needed when more than one is set up."
+        },
+        "charge_power_pct": {
+          "name": "Charge power",
+          "description": "Charge power of the first time slot, in percent."
+        },
+        "discharge_power_pct": {
+          "name": "Discharge power",
+          "description": "Discharge power of the first time slot, in percent."
+        },
+        "user_mode": {
+          "name": "User mode",
+          "description": "User mode that is active after the profile is applied."
+        }
+      }
+    }
+  },
+  "selector": {
+    "user_mode": {
+      "options": {
+        "self_use": "Self-use",
+        "time_of_use": "Time of use",
+        "backup": "Backup",
+        "manual": "Manual"
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
-pytest>=8.0
-mypy>=1.10
-homeassistant==2026.7.1
+# Test harness pinned to one Home Assistant release (0.13.375 = HA 2026.10.4).
+# CI also runs the minimum supported release and the latest harness.
+pytest-homeassistant-custom-component==0.13.375
 pymodbus==3.13.1
+mypy>=1.10

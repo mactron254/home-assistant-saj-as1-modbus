@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import REGISTER_USER_MODE, USER_MODE_OPTIONS, USER_MODES
 from .coordinator import SAJModbusCoordinator
 from .entity import SAJEntity
 from .exceptions import SAJWriteFailedError
+from .models import SAJConfigEntry
 
 PARALLEL_UPDATES = 1
 
@@ -38,8 +38,8 @@ SELECT_DESCRIPTIONS: tuple[SAJSelectEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: SAJConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up SAJ AS1 select entities."""
     coordinator = entry.runtime_data.coordinator
@@ -59,9 +59,8 @@ class SAJSelect(SAJEntity, SelectEntity):
         description: SAJSelectEntityDescription,
     ) -> None:
         """Initialize the select entity."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
 
     @property
     def current_option(self) -> str | None:

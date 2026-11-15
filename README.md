@@ -105,7 +105,7 @@ service: saj_as1_modbus.set_profile
 data:
   charge_power_pct: 50
   discharge_power_pct: 50
-  user_mode: "Time of Use"
+  user_mode: "time_of_use"
 ```
 
 The integration writes charge/discharge power first and user mode last.
@@ -114,12 +114,13 @@ The integration writes charge/discharge power first and user mode last.
 
 Use Home Assistant entities with evcc `template: homeassistant`.
 
-Recommended grid mapping:
+Recommended grid mapping (default entity ids of a new installation; installations
+from before 2.0.0 keep their existing ids, check them under Settings > Entities):
 
 ```yaml
-power: sensor.saj_as1_modbus_grid_power_signed
-voltageL1: sensor.saj_as1_modbus_grid_voltage_l1
-currentL1: sensor.saj_as1_modbus_grid_current_l1
+power: sensor.saj_as1_inverter_net_grid_power
+voltageL1: sensor.saj_as1_inverter_grid_voltage_l1
+currentL1: sensor.saj_as1_inverter_grid_current_l1
 ```
 
 Do not configure L2/L3 from this integration. The documented local AS1 protocol exposes only L1/R values for these grid measurements.

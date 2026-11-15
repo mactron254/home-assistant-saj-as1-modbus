@@ -7,12 +7,12 @@
         "data": {
           "host": "Dirección IP",
           "port": "Puerto Modbus",
-          "device_id": "ID de dispositivo"
+          "device_id": "ID de dispositivo Modbus"
         },
         "data_description": {
-          "host": "Dirección IP o nombre del endpoint Modbus TCP del SAJ AS1.",
+          "host": "Dirección IP o nombre del endpoint Modbus TCP del SAJ AS1 (por ejemplo el stick AIO3).",
           "port": "Puerto TCP usado por Modbus. El valor por defecto es 502.",
-          "device_id": "ID de dispositivo Modbus. El valor por defecto es 1."
+          "device_id": "ID de dispositivo Modbus (unit ID) del inversor. El valor por defecto es 1."
         }
       },
       "reconfigure": {
@@ -21,68 +21,153 @@
         "data": {
           "host": "Dirección IP",
           "port": "Puerto Modbus",
-          "device_id": "ID de dispositivo"
+          "device_id": "ID de dispositivo Modbus"
         },
         "data_description": {
-          "host": "Dirección IP o nombre del endpoint Modbus TCP del SAJ AS1.",
+          "host": "Dirección IP o nombre del endpoint Modbus TCP del SAJ AS1 (por ejemplo el stick AIO3).",
           "port": "Puerto TCP usado por Modbus. El valor por defecto es 502.",
-          "device_id": "ID de dispositivo Modbus. El valor por defecto es 1."
+          "device_id": "ID de dispositivo Modbus (unit ID) del inversor. El valor por defecto es 1."
         }
       }
     },
     "error": {
-      "cannot_connect": "No se puede conectar con el inversor SAJ AS1."
+      "cannot_connect": "No se puede conectar con el inversor SAJ AS1.",
+      "unknown": "Error inesperado."
     },
     "abort": {
-      "already_configured": "Este inversor SAJ AS1 ya está configurado."
+      "already_configured": "Este inversor SAJ AS1 ya está configurado.",
+      "reconfigure_successful": "La conexión se ha actualizado correctamente."
     }
   },
   "entity": {
     "sensor": {
-      "total_pv_power": { "name": "Potencia solar total" },
-      "total_load_power": { "name": "Potencia casa" },
-      "grid_import_power": { "name": "Potencia importada de red" },
-      "grid_export_power": { "name": "Potencia exportada a red" },
-      "grid_voltage_l1": { "name": "Voltaje red L1" },
-      "grid_current_l1": { "name": "Corriente red L1" },
-      "grid_frequency_l1": { "name": "Frecuencia red L1" },
-      "battery_charging_power": { "name": "Potencia carga batería" },
-      "battery_discharging_power": { "name": "Potencia descarga batería" },
-      "bat1_soc": { "name": "Estado de carga batería" },
-      "total_pv_energy": { "name": "Energía solar total" },
-      "total_battery_charge_energy": { "name": "Energía carga batería total" },
-      "total_battery_discharge_energy": { "name": "Energía descarga batería total" },
-      "total_load_energy": { "name": "Energía casa total" },
-      "total_grid_import_energy": { "name": "Energía importada de red total" },
-      "total_grid_export_energy": { "name": "Energía exportada a red total" },
-      "bat1_soh": { "name": "Salud de batería" },
-      "bat1_voltage": { "name": "Voltaje batería" },
-      "bat1_current": { "name": "Corriente batería" },
-      "bat1_temp": { "name": "Temperatura batería" },
-      "bat1_cycles": { "name": "Ciclos batería" },
-      "radiator_temp": { "name": "Temperatura disipador" },
-      "error_count": { "name": "Contador de errores" },
-      "working_mode_name": { "name": "Modo de funcionamiento" },
-      "battery_capacity_real": { "name": "Capacidad real batería" },
-      "battery_time_to_full": { "name": "Tiempo hasta carga completa" },
-      "battery_time_to_empty": { "name": "Tiempo hasta descarga completa" },
-      "bat_number": { "name": "Número de baterías" }
+      "total_pv_power": {
+        "name": "Potencia solar total"
+      },
+      "total_load_power": {
+        "name": "Potencia casa"
+      },
+      "grid_import_power": {
+        "name": "Potencia importada de red"
+      },
+      "grid_export_power": {
+        "name": "Potencia exportada a red"
+      },
+      "grid_power_signed": {
+        "name": "Potencia de red neta"
+      },
+      "grid_voltage_l1": {
+        "name": "Voltaje red L1"
+      },
+      "grid_current_l1": {
+        "name": "Corriente red L1"
+      },
+      "grid_frequency_l1": {
+        "name": "Frecuencia red L1"
+      },
+      "battery_charging_power": {
+        "name": "Potencia carga batería"
+      },
+      "battery_discharging_power": {
+        "name": "Potencia descarga batería"
+      },
+      "battery_power_signed": {
+        "name": "Potencia de batería neta"
+      },
+      "bat1_soc": {
+        "name": "Estado de carga batería"
+      },
+      "total_pv_energy": {
+        "name": "Energía solar total"
+      },
+      "total_battery_charge_energy": {
+        "name": "Energía carga batería total"
+      },
+      "total_battery_discharge_energy": {
+        "name": "Energía descarga batería total"
+      },
+      "total_load_energy": {
+        "name": "Energía casa total"
+      },
+      "total_grid_import_energy": {
+        "name": "Energía importada de red total"
+      },
+      "total_grid_export_energy": {
+        "name": "Energía exportada a red total"
+      },
+      "bat1_soh": {
+        "name": "Salud de batería"
+      },
+      "bat1_voltage": {
+        "name": "Voltaje batería"
+      },
+      "bat1_current": {
+        "name": "Corriente batería"
+      },
+      "bat1_temp": {
+        "name": "Temperatura batería"
+      },
+      "bat1_cycles": {
+        "name": "Ciclos batería"
+      },
+      "radiator_temp": {
+        "name": "Temperatura disipador"
+      },
+      "error_count": {
+        "name": "Contador de errores"
+      },
+      "working_mode_name": {
+        "name": "Modo de funcionamiento",
+        "state": {
+          "standby": "En espera",
+          "self_use": "Autoconsumo",
+          "peak_shaving": "Recorte de picos",
+          "backup": "Respaldo",
+          "off_grid": "Aislado de red"
+        }
+      },
+      "battery_capacity_real": {
+        "name": "Capacidad real batería"
+      },
+      "battery_time_to_full": {
+        "name": "Tiempo hasta carga completa"
+      },
+      "battery_time_to_empty": {
+        "name": "Tiempo hasta descarga completa"
+      },
+      "bat_number": {
+        "name": "Número de baterías"
+      }
     },
     "number": {
-      "first_charge_power_pct": { "name": "Potencia de carga primera franja" },
-      "first_discharge_power_pct": { "name": "Potencia de descarga primera franja" }
+      "first_charge_power_pct": {
+        "name": "Potencia de carga primera franja"
+      },
+      "first_discharge_power_pct": {
+        "name": "Potencia de descarga primera franja"
+      }
     },
     "select": {
-      "user_mode": { "name": "Modo de usuario" }
+      "user_mode": {
+        "name": "Modo de usuario",
+        "state": {
+          "self_use": "Autoconsumo",
+          "time_of_use": "Horario de Uso",
+          "backup": "Reserva",
+          "manual": "Manual"
+        }
+      }
     },
     "binary_sensor": {
-      "is_connected": { "name": "Estado de conexión" }
+      "is_connected": {
+        "name": "Estado de conexión"
+      }
     }
   },
   "issues": {
     "connection_unavailable": {
-      "title": "Conexión SAJ AS1 Modbus no disponible",
-      "description": "Home Assistant no puede leer todos los registros Modbus necesarios del SAJ AS1 en {host}. Revisa la conexión de red del inversor, Modbus TCP, el puerto y el ID de dispositivo."
+      "title": "{name} lleva {minutes} minutos sin responder",
+      "description": "Home Assistant no ha podido leer el inversor SAJ AS1 en {host}:{port} durante {minutes} minutos. Sus sensores siguen no disponibles y no se pueden cambiar los ajustes de batería hasta que vuelva la conexión.\n\n1. Comprueba que el stick AIO3 (o la pasarela Modbus TCP) está encendido y conectado a tu red, por ejemplo en la app de SAJ o en tu router.\n2. Asegúrate de que ningún otro cliente Modbus está consultando el stick a la vez.\n3. Si ha cambiado la dirección del stick, abre la integración SAJ AS1 Modbus y elige **Reconfigurar** para introducir la nueva.\n4. Si el stick no responde, reinicia el inversor o el stick.\n\nEste aviso desaparece solo cuando el inversor vuelve a responder."
     }
   },
   "exceptions": {
@@ -95,17 +180,54 @@
     "profile_write_failed": {
       "message": "No se pudo aplicar el perfil SAJ AS1."
     },
-    "entry_required": {
-      "message": "Indica config_entry_id cuando haya más de un SAJ AS1 configurado."
-    },
-    "entry_not_found": {
-      "message": "No existe la entrada SAJ AS1 {entry_id}."
-    },
-    "entry_not_loaded": {
-      "message": "La entrada SAJ AS1 {entry_id} no está cargada."
-    },
     "invalid_user_mode": {
       "message": "Modo de usuario no válido: {mode}."
+    },
+    "update_failed": {
+      "message": "No se pudo leer el inversor SAJ AS1: {error}"
+    },
+    "circuit_open": {
+      "message": "Lecturas del SAJ AS1 en pausa tras varios fallos de conexión seguidos."
+    },
+    "entry_required": {
+      "message": "Hay varios inversores SAJ AS1 configurados. Elige cuál quieres configurar."
+    },
+    "entry_not_loaded": {
+      "message": "No hay ningún inversor SAJ AS1 cargado."
+    }
+  },
+  "services": {
+    "set_profile": {
+      "name": "Configurar perfil SAJ AS1",
+      "description": "Configura el modo de usuario y las potencias de carga y descarga de la primera franja en un solo lote Modbus. Pensado para automatizaciones.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Inversor",
+          "description": "Inversor SAJ AS1 que se configura. Solo es necesario si hay más de uno."
+        },
+        "charge_power_pct": {
+          "name": "Potencia de carga",
+          "description": "Potencia de carga de la primera franja, en porcentaje."
+        },
+        "discharge_power_pct": {
+          "name": "Potencia de descarga",
+          "description": "Potencia de descarga de la primera franja, en porcentaje."
+        },
+        "user_mode": {
+          "name": "Modo de usuario",
+          "description": "Modo de usuario que queda activo tras aplicar el perfil."
+        }
+      }
+    }
+  },
+  "selector": {
+    "user_mode": {
+      "options": {
+        "self_use": "Autoconsumo",
+        "time_of_use": "Horario de Uso",
+        "backup": "Reserva",
+        "manual": "Manual"
+      }
     }
   }
 }

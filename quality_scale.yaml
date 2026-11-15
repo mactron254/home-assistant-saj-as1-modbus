@@ -3,9 +3,7 @@ rules:
   appropriate-polling: done
   brands: done
   common-modules: done
-  config-flow-test-coverage:
-    status: todo
-    comment: Hay tests estaticos; falta suite con Home Assistant test harness.
+  config-flow-test-coverage: done
   config-flow: done
   dependency-transparency: done
   docs-actions: done
@@ -35,7 +33,7 @@ rules:
     comment: Modbus TCP local no usa credenciales ni tokens que puedan caducar.
   test-coverage:
     status: todo
-    comment: Objetivo >95%; pendiente de entorno HA test harness o instalacion core local.
+    comment: Home Assistant test harness in place, 91% coverage; target is >95%.
 
   devices: done
   diagnostics: done
@@ -71,6 +69,4 @@ rules:
   inject-websession:
     status: exempt
     comment: PyModbus TCP no usa aiohttp/websession.
-  strict-typing:
-    status: todo
-    comment: mypy strict configurado; falta resolver/verificar con stubs reales de HA.
+  strict-typing: done
