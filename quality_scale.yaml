@@ -31,9 +31,7 @@ rules:
   reauthentication-flow:
     status: exempt
     comment: Modbus TCP local no usa credenciales ni tokens que puedan caducar.
-  test-coverage:
-    status: todo
-    comment: Home Assistant test harness in place, 91% coverage; target is >95%.
+  test-coverage: done
 
   devices: done
   diagnostics: done

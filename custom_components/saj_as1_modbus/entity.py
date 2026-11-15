@@ -29,5 +29,6 @@ class SAJEntity(CoordinatorEntity[SAJModbusCoordinator]):
     @property
     def available(self) -> bool:
         """Return availability from the coordinator and the bucket health."""
-        key = self.entity_description.key
-        return super().available and key not in self.coordinator.unavailable_keys
+        return super().available and self.coordinator.is_key_available(
+            self.entity_description.key
+        )

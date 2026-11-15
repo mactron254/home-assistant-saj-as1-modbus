@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Generator
 from pathlib import Path
 import sys
 from typing import Any
 from unittest.mock import patch
 
+from pymodbus.exceptions import ModbusIOException
 import pytest
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -105,6 +107,14 @@ class FakeDevice:
         self.reachable = True
         self.io_error: Exception | None = None
         self.rejected_ranges: list[tuple[int, int, int]] = []
+        self.rejected_writes: dict[int, int] = {}
+        self.hang_addresses: set[int] = set()
+        self.short_reads = False
+        self.fail_writes = 0
+        self.connect_error: Exception | None = None
+        self.close_error: Exception | None = None
+        self.reads: list[int] = []
+        self.write_attempts: list[tuple[int, int]] = []
         self.writes: list[tuple[int, int]] = []
         self.clients: list[FakeClient] = []
 
@@ -130,22 +140,37 @@ class FakeClient:
 
     async def connect(self) -> bool:
         """Open the fake session."""
+        if self.device.connect_error is not None:
+            raise self.device.connect_error
         self.connected = self.device.reachable
         return self.connected
 
     def close(self) -> None:
         """Close the fake session."""
         self.connected = False
+        if self.device.close_error is not None:
+            raise self.device.close_error
 
     async def read_holding_registers(
         self, address: int, count: int, device_id: int
     ) -> FakeResponse:
         """Serve registers from the device map."""
+        self.device.reads.append(address)
         if self.device.io_error is not None:
             raise self.device.io_error
+        if address in self.device.hang_addresses:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError as exc:
+                # What PyModbus does with a cancelled request.
+                raise ModbusIOException(  # type: ignore[no-untyped-call]
+                    "Request cancelled outside pymodbus."
+                ) from exc
         for start, end, code in self.device.rejected_ranges:
             if address < end and start < address + count:
                 return FakeResponse(exception_code=code)
+        if self.device.short_reads:
+            count -= 1
         return FakeResponse(
             [self.device.registers.get(address + i, 0) for i in range(count)]
         )
@@ -154,8 +179,14 @@ class FakeClient:
         self, address: int, value: int, device_id: int
     ) -> FakeResponse:
         """Store a written register."""
+        self.device.write_attempts.append((address, value))
         if self.device.io_error is not None:
             raise self.device.io_error
+        if self.device.fail_writes:
+            self.device.fail_writes -= 1
+            raise ModbusIOException("No response")  # type: ignore[no-untyped-call]
+        if address in self.device.rejected_writes:
+            return FakeResponse(exception_code=self.device.rejected_writes[address])
         self.device.writes.append((address, value))
         self.device.registers[address] = value
         return FakeResponse([value])

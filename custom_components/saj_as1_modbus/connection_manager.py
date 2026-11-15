@@ -13,7 +13,9 @@ from .const import MODBUS_TIMEOUT, REGISTER_WORKING_MODE
 from .exceptions import (
     ConnectFailedError,
     ModbusReadError,
+    ModbusReadRejectedError,
     ModbusWriteError,
+    ModbusWriteRejectedError,
     ReconnectionNeededError,
 )
 
@@ -28,6 +30,9 @@ MAX_BACKOFF = 4.0
 CONNECT_TIMEOUT_MARGIN = 2.0
 FAST_WRITE_RETRY_DELAY = 0.5
 
+# Exception codes that are returned again on every retry.
+DETERMINISTIC_EXCEPTION_CODES = frozenset({1, 2, 3})
+
 # Exception codes that do not depend on the session. They are kept in the
 # error text so diagnostics show why a block was rejected.
 EXCEPTION_CODE_NAMES = {
@@ -39,6 +44,24 @@ EXCEPTION_CODE_NAMES = {
     10: "gateway path unavailable",
     11: "gateway target failed to respond",
 }
+
+
+def _raise_if_cancelling() -> None:
+    """Re-raise a cancellation that PyModbus turned into a Modbus error.
+
+    PyModbus reports a cancelled request as ``ModbusIOException``. Treating it
+    as a communication failure would retry and keep the cancelled poll cycle
+    (or an unloaded entry) talking to the stick.
+    """
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError
+
+
+def _exception_code(response: object) -> int | None:
+    """Return the exception code of a Modbus error response, if any."""
+    code = getattr(response, "exception_code", None)
+    return code if isinstance(code, int) else None
 
 
 class ModbusConnectionManager:
@@ -56,8 +79,10 @@ class ModbusConnectionManager:
         port: int,
         device_id: int,
         timeout: float = MODBUS_TIMEOUT,
+        connect_attempts: int = CONNECT_ATTEMPTS,
     ) -> None:
         """Initialize the connection manager."""
+        self.connect_attempts = connect_attempts
         self._host = host
         self._port = port
         self._device_id = device_id
@@ -100,13 +125,19 @@ class ModbusConnectionManager:
                 )
             except (ModbusException, OSError, ReconnectionNeededError) as err:
                 self._discard_client_unlocked()
+                _raise_if_cancelling()
                 raise ReconnectionNeededError(
                     f"Read failed at 0x{address:04X}: {err}"
                 ) from err
 
             if self._response_is_error(result):
                 self._discard_client_unlocked()
-                raise ModbusReadError(
+                error_class = (
+                    ModbusReadRejectedError
+                    if _exception_code(result) in DETERMINISTIC_EXCEPTION_CODES
+                    else ModbusReadError
+                )
+                raise error_class(
                     f"Read rejected at 0x{address:04X}{self._describe_error(result)}"
                 )
 
@@ -121,8 +152,9 @@ class ModbusConnectionManager:
     async def write_register(self, address: int, value: int) -> None:
         """Write one holding register, retrying once on a broken session.
 
-        A connection that cannot be opened at all is not retried here; the
-        coordinator owns the slow retry policy for that case.
+        A connection that cannot be opened at all, or a deterministic
+        rejection (codes 1-3), is not retried here; the coordinator owns the
+        slow retry policy.
         """
         error: Exception | None = None
         for attempt in range(2):
@@ -138,6 +170,7 @@ class ModbusConnectionManager:
                     )
                 except (ModbusException, OSError, ReconnectionNeededError) as err:
                     self._discard_client_unlocked()
+                    _raise_if_cancelling()
                     error = ReconnectionNeededError(
                         f"Write failed at 0x{address:04X}: {err}"
                     )
@@ -145,6 +178,11 @@ class ModbusConnectionManager:
                     if not self._response_is_error(result):
                         return
                     self._discard_client_unlocked()
+                    if _exception_code(result) in DETERMINISTIC_EXCEPTION_CODES:
+                        raise ModbusWriteRejectedError(
+                            f"Write rejected at 0x{address:04X}"
+                            f"{self._describe_error(result)}"
+                        )
                     error = ModbusWriteError(
                         f"Write rejected at 0x{address:04X}"
                         f"{self._describe_error(result)}"
@@ -179,7 +217,8 @@ class ModbusConnectionManager:
     async def _connect_with_retries(self) -> AsyncModbusTcpClient:
         """Open a session with a short, bounded exponential backoff."""
         last_error: Exception | None = None
-        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        attempts = max(1, self.connect_attempts)
+        for attempt in range(1, attempts + 1):
             client = AsyncModbusTcpClient(
                 host=self._host,
                 port=self._port,
@@ -199,12 +238,12 @@ class ModbusConnectionManager:
                 return client
 
             self._close_quietly(client)
-            if attempt < CONNECT_ATTEMPTS:
+            if attempt < attempts:
                 backoff = min(INITIAL_BACKOFF * 2 ** (attempt - 1), MAX_BACKOFF)
                 _LOGGER.debug(
                     "Modbus connection attempt %d/%d to %s:%d failed, retrying in %.1fs",
                     attempt,
-                    CONNECT_ATTEMPTS,
+                    attempts,
                     self._host,
                     self._port,
                     backoff,
@@ -214,7 +253,7 @@ class ModbusConnectionManager:
         detail = f": {last_error}" if last_error else ""
         raise ConnectFailedError(
             f"Unable to connect to {self._host}:{self._port} "
-            f"after {CONNECT_ATTEMPTS} attempts{detail}"
+            f"after {attempts} attempts{detail}"
         )
 
     def _discard_client_unlocked(self) -> None:
@@ -242,8 +281,8 @@ class ModbusConnectionManager:
     @staticmethod
     def _describe_error(response: object) -> str:
         """Return a short description of a Modbus exception response."""
-        code = getattr(response, "exception_code", None)
-        if not isinstance(code, int):
+        code = _exception_code(response)
+        if code is None:
             return ""
         name = EXCEPTION_CODE_NAMES.get(code, "device specific")
         return f" (exception code {code}: {name})"

@@ -178,7 +178,7 @@
       "message": "Debes indicar al menos un valor del perfil SAJ AS1."
     },
     "profile_write_failed": {
-      "message": "No se pudo aplicar el perfil SAJ AS1."
+      "message": "No se pudo aplicar el perfil SAJ AS1. Sin escribir: {failed}."
     },
     "invalid_user_mode": {
       "message": "Modo de usuario no válido: {mode}."

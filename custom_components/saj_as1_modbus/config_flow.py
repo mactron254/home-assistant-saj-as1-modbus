@@ -72,6 +72,8 @@ async def _async_test_connection(host: str, port: int, device_id: int) -> None:
         port=port,
         device_id=device_id,
         timeout=MODBUS_TIMEOUT,
+        # One attempt so the form answers in seconds when the host is down.
+        connect_attempts=1,
     )
     try:
         await manager.test_connection()

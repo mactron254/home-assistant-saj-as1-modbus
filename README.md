@@ -125,6 +125,33 @@ currentL1: sensor.saj_as1_inverter_grid_current_l1
 
 Do not configure L2/L3 from this integration. The documented local AS1 protocol exposes only L1/R values for these grid measurements.
 
+## Known Limitations
+
+- Modbus TCP/IP only. The AIO3 WiFi stick accepts one Modbus client at a time:
+  do not poll it from another Modbus client while this integration runs.
+- Polling cadence is fixed (power 30 s, status 60 s, settings and energy
+  totals 300 s) to protect the AIO3 stick.
+- Writes are batched and paced: a change takes about 8-10 seconds to be applied
+  and confirmed.
+- Only the first charge and discharge time slot and the user mode can be
+  changed.
+- Only L1/R grid values are documented for the AS1 and exposed.
+- Under review on real hardware: grid import/export power currently use the
+  grid-to-load and PV-to-grid flows only (battery-to-grid and grid-to-battery
+  are not added), and the working mode mapping of register `0x4004` is not
+  documented by the protocol. Diagnostics include the raw power flows to check
+  them.
+- The integration is identified by host, port and Modbus device id.
+
+## Removal
+
+1. Go to **Settings > Devices & services**, open **SAJ AS1 Modbus** and delete
+   the entry (three-dot menu > **Delete**).
+2. If it was installed with HACS, open HACS, select **SAJ AS1 Modbus** and
+   choose **Remove**. For a manual installation, delete
+   `/config/custom_components/saj_as1_modbus`.
+3. Restart Home Assistant.
+
 ## Documentation
 
 - [Installation](docs/INSTALLATION.md)

@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.0.1
+
+Fixes from the 2.0.0 review. Same entities, states and register reads as
+2.0.0.
+
+### Connection
+
+- A cancelled or timed out poll cycle stops talking to the stick. PyModbus
+  reports a cancelled request as a Modbus error; it was retried as a
+  communication failure, so a cycle could keep reading after its timeout and
+  an unloaded entry could keep a session open next to the new one.
+- While the inverter is down each cycle makes one connect attempt instead of
+  three, and the circuit breaker warning is logged once per outage.
+- Exception codes 1-3 (illegal function, address or value) are final: reads
+  and writes rejected with them are not retried.
+- The config flow makes a single connect attempt, so the form answers in
+  about 10 seconds instead of about 37 when the host is down.
+
+### Fixes
+
+- A write no longer postpones the next poll or marks a failing coordinator as
+  successful (entities stayed available with old data).
+- A cycle where every due register block is rejected counts as failed, so the
+  entry is not set up with empty data.
+- The connection state only reflects whether the inverter answers; a single
+  failing block no longer reports it as disconnected or raises the repair. The
+  connection sensor stays available and shows off during an outage.
+- Grid L1 values and the user mode are no longer reused forever when only
+  their register fails, and derived battery values become unavailable together
+  with their inputs.
+- Lifetime energy counters ignore readings of 0 (all counters at 0, or one
+  counter dropping to 0), which were recorded as meter resets.
+- `set_profile` reports which fields could not be written, and a failed write
+  no longer postpones the next read of the settings.
+- Diagnostics no longer contain the inverter address inside error texts and
+  include the raw power flows of the 0x4099 block to check the grid and
+  battery mapping on hardware.
+- Unexpected errors in a register block are logged as warnings.
+
+### Maintenance
+
+- `integration_type` is `device` and `pymodbus` is listed in `loggers`.
+- README: known limitations and removal instructions.
+- Tests cover cancellation, timeouts, partial writes and stale values;
+  coverage is 96 %.
+
 ## 2.0.0
 
 Same entities and register map as 1.0.2 (no new sensors and no new register

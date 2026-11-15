@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from types import SimpleNamespace
-from typing import Any
 
 from custom_components.saj_as1_modbus.const import (
     AIO3_CIRCUIT_BREAKER_COOLDOWN,
@@ -83,6 +82,7 @@ def test_open_circuit_sets_cooldown_once() -> None:
         consecutive_failures=AIO3_CIRCUIT_BREAKER_FAILURES,
         _circuit_open_until=0.0,
         _circuit_open_count=0,
+        _circuit_warned=False,
     )
     coordinator._circuit_is_open = lambda value: value < coordinator._circuit_open_until
 

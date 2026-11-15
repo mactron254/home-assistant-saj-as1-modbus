@@ -57,6 +57,11 @@ class SAJBinarySensor(SAJEntity, BinarySensorEntity):
         self.entity_description = description
 
     @property
+    def available(self) -> bool:
+        """Stay available: a lost connection must show as off, not unavailable."""
+        return True
+
+    @property
     def is_on(self) -> bool | None:
         """Return whether the inverter connection is healthy."""
         return bool(self.coordinator.is_connected)

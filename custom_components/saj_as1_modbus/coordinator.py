@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .connection_manager import ModbusConnectionManager
+from .connection_manager import CONNECT_ATTEMPTS, ModbusConnectionManager
 from .const import (
     AIO3_BATCH_INTER_WRITE_DELAY,
     AIO3_CIRCUIT_BREAKER_COOLDOWN,
@@ -69,8 +69,11 @@ from .const import (
 from .exceptions import (
     ConnectFailedError,
     ModbusReadError,
+    ModbusReadRejectedError,
     ModbusWriteError,
+    ModbusWriteRejectedError,
     ReconnectionNeededError,
+    SAJModbusException,
 )
 from .modbus_processing import (
     extract_byte_high,
@@ -92,6 +95,33 @@ _LOGGER = logging.getLogger(__name__)
 ReadMethod = Callable[[], Awaitable[dict[str, Any]]]
 
 SLOT_POWER_REGISTERS = (REGISTER_CHARGE_POWER_PCT, REGISTER_DISCHARGE_POWER_PCT)
+
+GRID_L1_KEYS = ("grid_voltage_l1", "grid_current_l1", "grid_frequency_l1")
+
+# Derived values are only available while every value they are built from is.
+DERIVED_INPUTS: dict[str, tuple[str, ...]] = {
+    "battery_capacity_real": ("bat1_soh",),
+    "battery_time_to_full": ("bat1_soh", "bat1_soc", "battery_power"),
+    "battery_time_to_empty": ("bat1_soh", "bat1_soc", "battery_power"),
+}
+
+# Raw power flow registers of the HIGH power block (offset from 0x4099), kept
+# for diagnostics so the grid and battery mapping can be checked on hardware.
+RAW_POWER_FLOWS = {
+    "0x4099_pv_to_load": 0,
+    "0x409A_grid_to_load": 1,
+    "0x409B_pv_to_grid": 2,
+    "0x409C_battery_to_grid": 3,
+    "0x409D_battery_to_load": 4,
+    "0x409E_pv_to_battery": 5,
+    "0x409F_grid_to_battery": 6,
+    "0x40A0_total_load": 7,
+    "0x40A1_ct_grid_power": 8,
+    "0x40A2_ct_grid_power_va": 9,
+    "0x40A3_ct_pv_power": 10,
+    "0x40A4_ct_pv_power_va": 11,
+    "0x40A5_total_pv_power": 12,
+}
 
 
 def connection_issue_id(entry_id: str) -> str:
@@ -142,6 +172,9 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._slot_days: dict[int, int | None] = dict.fromkeys(SLOT_POWER_REGISTERS)
         self._connection_issue_active = False
         self._disconnected_since: float | None = None
+        self._circuit_warned = False
+        self._grid_l1_failures = 0
+        self._user_mode_failures = 0
         self._last_update_duration = 0.0
         self._circuit_open_until = 0.0
         self._circuit_open_count = 0
@@ -175,6 +208,9 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.consecutive_failures = 0
         self.last_error_type: str | None = None
         self.unavailable_keys: set[str] = set()
+        # Keys whose last value is too old to show although their bucket works.
+        self.expired_keys: set[str] = set()
+        self.raw_power_flows: dict[str, int] = {}
 
         super().__init__(
             hass,
@@ -192,10 +228,20 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._set_connected_state(False)
             raise UpdateFailed(translation_domain=DOMAIN, translation_key="circuit_open")
 
+        # While the inverter is known to be down, one connect attempt per
+        # cycle is enough; three only add load and log lines.
+        self.connection.connect_attempts = (
+            1 if self.consecutive_failures else CONNECT_ATTEMPTS
+        )
         data = dict(self.data or {})
         try:
             async with asyncio.timeout(POLL_CYCLE_TIMEOUT):
-                await self._refresh_buckets(data, now)
+                due, refreshed = await self._refresh_buckets(data, now)
+            if due and not refreshed:
+                raise ModbusReadError("No register block could be read")
+        except asyncio.CancelledError:
+            await self.connection.close()
+            raise
         except ReconnectionNeededError as err:
             await self.connection.close()
             await asyncio.sleep(AIO3_RECOVERY_DELAY)
@@ -216,56 +262,66 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.consecutive_failures = 0
         self.last_error_type = None
         self._circuit_open_until = 0.0
-        self._set_connected_state(not self.unavailable_keys)
+        self._circuit_warned = False
+        self._set_connected_state(True)
         await self.connection.close()
         return data
 
-    async def _refresh_buckets(self, data: dict[str, Any], now: float) -> None:
-        """Refresh every bucket whose interval has elapsed."""
-        await self._refresh_bucket_if_due(
-            data=data,
-            now=now,
-            interval=SCAN_INTERVAL_HIGH,
-            last_attr="_last_high_update",
-            failures_attr="_high_failures",
-            cache_attr="_high_cache",
-            keys=HIGH_KEYS,
-            reader=self._read_high,
-            label="HIGH",
-        )
-        await self._refresh_bucket_if_due(
-            data=data,
-            now=now,
-            interval=SCAN_INTERVAL_MEDIUM,
-            last_attr="_last_medium_update",
-            failures_attr="_medium_failures",
-            cache_attr="_medium_cache",
-            keys=MEDIUM_KEYS,
-            reader=self._read_medium,
-            label="MEDIUM",
-        )
-        await self._refresh_bucket_if_due(
-            data=data,
-            now=now,
-            interval=SCAN_INTERVAL_CONFIG,
-            last_attr="_last_config_update",
-            failures_attr="_config_failures",
-            cache_attr="_config_cache",
-            keys=CONFIG_KEYS,
-            reader=self._read_config,
-            label="CONFIG",
-        )
-        await self._refresh_bucket_if_due(
-            data=data,
-            now=now,
-            interval=SCAN_INTERVAL_LOW,
-            last_attr="_last_low_update",
-            failures_attr="_low_failures",
-            cache_attr="_low_cache",
-            keys=LOW_KEYS,
-            reader=self._read_low,
-            label="LOW",
-        )
+    async def _refresh_buckets(
+        self, data: dict[str, Any], now: float
+    ) -> tuple[int, int]:
+        """Refresh every bucket whose interval has elapsed.
+
+        Return how many buckets were due and how many of them were read.
+        """
+        results = [
+            await self._refresh_bucket_if_due(
+                data=data,
+                now=now,
+                interval=SCAN_INTERVAL_HIGH,
+                last_attr="_last_high_update",
+                failures_attr="_high_failures",
+                cache_attr="_high_cache",
+                keys=HIGH_KEYS,
+                reader=self._read_high,
+                label="HIGH",
+            ),
+            await self._refresh_bucket_if_due(
+                data=data,
+                now=now,
+                interval=SCAN_INTERVAL_MEDIUM,
+                last_attr="_last_medium_update",
+                failures_attr="_medium_failures",
+                cache_attr="_medium_cache",
+                keys=MEDIUM_KEYS,
+                reader=self._read_medium,
+                label="MEDIUM",
+            ),
+            await self._refresh_bucket_if_due(
+                data=data,
+                now=now,
+                interval=SCAN_INTERVAL_CONFIG,
+                last_attr="_last_config_update",
+                failures_attr="_config_failures",
+                cache_attr="_config_cache",
+                keys=CONFIG_KEYS,
+                reader=self._read_config,
+                label="CONFIG",
+            ),
+            await self._refresh_bucket_if_due(
+                data=data,
+                now=now,
+                interval=SCAN_INTERVAL_LOW,
+                last_attr="_last_low_update",
+                failures_attr="_low_failures",
+                cache_attr="_low_cache",
+                keys=LOW_KEYS,
+                reader=self._read_low,
+                label="LOW",
+            ),
+        ]
+        due = [result for result in results if result is not None]
+        return len(due), sum(due)
 
     def _cycle_failed(self, err: Exception, *, connection_lost: bool) -> dict[str, Any]:
         """Keep the last values through short outages, then fail the update.
@@ -368,8 +424,11 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         charge_power_pct: int | None = None,
         discharge_power_pct: int | None = None,
         user_mode: int | None = None,
-    ) -> bool:
-        """Apply a complete profile in a single action call."""
+    ) -> dict[int, bool]:
+        """Apply a complete profile in a single action call.
+
+        Return whether each requested register was written.
+        """
         batch_values: dict[int, int] = {}
         if charge_power_pct is not None:
             batch_values[REGISTER_CHARGE_POWER_PCT] = charge_power_pct
@@ -379,13 +438,13 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             batch_values[REGISTER_USER_MODE] = user_mode
 
         if not batch_values:
-            return True
+            return {}
 
         self._begin_write()
         try:
             async with self._write_lock:
                 results = await self._apply_write_batch(batch_values)
-            return all(results.get(address, False) for address in batch_values)
+            return {address: results.get(address, False) for address in batch_values}
         finally:
             self._end_write()
 
@@ -423,7 +482,9 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self.connection.close()
                     await asyncio.sleep(AIO3_BATCH_INTER_WRITE_DELAY)
 
-            if set(CONFIG_KEYS).issubset(self._config_cache):
+            if any(results.values()) and set(CONFIG_KEYS).issubset(
+                self._config_cache
+            ):
                 self._last_config_update = time.monotonic()
             await self.connection.close()
             await asyncio.sleep(AIO3_WRITE_SETTLE_DELAY)
@@ -471,6 +532,8 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 await self.connection.write_register(address, value)
                 return
+            except ModbusWriteRejectedError:
+                raise
             except (ModbusWriteError, ReconnectionNeededError) as err:
                 last_error = err
                 await self.connection.close()
@@ -501,8 +564,10 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         keys: tuple[str, ...],
         reader: ReadMethod,
         label: str,
-    ) -> None:
+    ) -> bool | None:
         """Refresh one bucket or reuse its cache.
+
+        Return None when the bucket was not due, otherwise whether it was read.
 
         A bucket that has never been read successfully publishes nothing, so
         its entities stay unknown instead of reporting zeros. A zero would be
@@ -514,7 +579,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if not due:
             data.update(cache)
-            return
+            return None
 
         started = time.monotonic()
         try:
@@ -523,7 +588,14 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._bucket_last_duration[label] = round(time.monotonic() - started, 3)
             raise
         except Exception as err:
-            _LOGGER.debug("%s bucket failed: %s", label, err)
+            if not isinstance(err, SAJModbusException) and (
+                self._bucket_last_error[label] != str(err)
+            ):
+                _LOGGER.warning(
+                    "Unexpected error in the %s bucket: %s", label, err, exc_info=True
+                )
+            else:
+                _LOGGER.debug("%s bucket failed: %s", label, err)
             self._bucket_last_error[label] = str(err)
             bucket_data = {}
 
@@ -541,7 +613,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if was_unavailable:
                 _LOGGER.info("%s bucket recovered", label)
             data.update(cache)
-            return
+            return True
 
         failures = getattr(self, failures_attr) + 1
         setattr(self, failures_attr, failures)
@@ -560,6 +632,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     failures,
                 )
         data.update(cache)
+        return False
 
     def diagnostic_polling(self) -> dict[str, Any]:
         """Return polling metrics for diagnostics."""
@@ -618,6 +691,13 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             },
         }
 
+    def is_key_available(self, key: str) -> bool:
+        """Return whether the value of a data key can be shown."""
+        blocked = self.unavailable_keys | self.expired_keys
+        if key in blocked:
+            return False
+        return blocked.isdisjoint(DERIVED_INPUTS.get(key, ()))
+
     def _circuit_is_open(self, now: float) -> bool:
         """Return whether the cooldown after repeated failures is active."""
         return now < self._circuit_open_until
@@ -632,7 +712,9 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._circuit_open_count += 1
         self._circuit_open_until = time.monotonic() + AIO3_CIRCUIT_BREAKER_COOLDOWN
-        _LOGGER.warning(
+        log = _LOGGER.debug if self._circuit_warned else _LOGGER.warning
+        self._circuit_warned = True
+        log(
             "SAJ AS1 circuit breaker open for %.0fs after %d failures",
             AIO3_CIRCUIT_BREAKER_COOLDOWN,
             self.consecutive_failures,
@@ -655,6 +737,10 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             REGISTER_POWER_BLOCK_COUNT,
         )
 
+        self.raw_power_flows = {
+            name: read_power(power_regs, offset)
+            for name, offset in RAW_POWER_FLOWS.items()
+        }
         grid_import = read_power(power_regs, 1)
         grid_export = read_power(power_regs, 2)
         battery_discharge = read_power(power_regs, 4)
@@ -737,15 +823,22 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except ConnectFailedError:
             raise
         except (ModbusReadError, ReconnectionNeededError) as err:
+            self._grid_l1_failures += 1
             _LOGGER.debug("Grid L1 status block failed: %s", err)
+            if self._grid_l1_failures >= MAX_FAILURES_BEFORE_UNAVAILABLE:
+                # Too old to show: the entities become unavailable.
+                self.expired_keys.update(GRID_L1_KEYS)
+                return {}
             current_data = self.data or {}
             fallback: dict[str, float] = {}
-            for key in ("grid_voltage_l1", "grid_current_l1", "grid_frequency_l1"):
+            for key in GRID_L1_KEYS:
                 value = current_data.get(key)
                 if isinstance(value, int | float):
                     fallback[key] = float(value)
             return fallback
 
+        self._grid_l1_failures = 0
+        self.expired_keys.difference_update(GRID_L1_KEYS)
         return {
             "grid_voltage_l1": read_voltage(regs, 0),
             "grid_current_l1": read_current(regs, 1),
@@ -783,7 +876,17 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             LOW_ENERGY_BLOCK_START,
             LOW_ENERGY_BLOCK_COUNT,
         )
-        return self._energy_data_from_block(regs)
+        energies = self._energy_data_from_block(regs)
+        if not any(energies.values()):
+            # A running installation never has every lifetime counter at 0;
+            # publishing it would be recorded as a meter reset.
+            raise ModbusReadError("Energy counters read as all zeros")
+        for key, value in energies.items():
+            previous = self._low_cache.get(key)
+            if value == 0 and isinstance(previous, int | float) and previous > 0:
+                _LOGGER.debug("Ignoring a 0 kWh reading of %s", key)
+                energies[key] = previous
+        return energies
 
     @staticmethod
     def _energy_data_from_block(regs: list[int]) -> dict[str, float]:
@@ -799,9 +902,14 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             regs = await self._read_sensitive_register(REGISTER_USER_MODE, "User mode")
             user_mode = read_uint16(regs, 0)
             self._last_user_mode = user_mode
+            self._user_mode_failures = 0
+            self.expired_keys.discard("user_mode")
             return user_mode
         except ModbusReadError as err:
+            self._user_mode_failures += 1
             _LOGGER.debug("User mode could not be read: %s", err)
+            if self._user_mode_failures >= MAX_FAILURES_BEFORE_UNAVAILABLE:
+                self.expired_keys.add("user_mode")
 
         return self._last_user_mode
 
@@ -815,7 +923,7 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for attempt in range(1, AIO3_SENSITIVE_RETRIES + 1):
             try:
                 return await self.connection.read_registers(address, 1)
-            except ConnectFailedError:
+            except (ConnectFailedError, ModbusReadRejectedError):
                 raise
             except (ModbusReadError, ReconnectionNeededError) as err:
                 last_error = err
@@ -852,7 +960,11 @@ class SAJModbusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current_data[key] = value
         self._config_cache[key] = value
         self.unavailable_keys.discard(key)
-        self.async_set_updated_data(current_data)
+        self.expired_keys.discard(key)
+        # Not async_set_updated_data: it would postpone the next poll and mark
+        # the coordinator as successful although reads may be failing.
+        self.data = current_data
+        self.async_update_listeners()
 
     def _begin_write(self) -> None:
         """Register a pending write so new read blocks wait for it."""

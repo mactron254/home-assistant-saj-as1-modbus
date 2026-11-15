@@ -30,6 +30,9 @@ from .const import (
     CONF_SCAN_INTERVAL,
     DOMAIN,
     LEGACY_USER_MODE_OPTIONS,
+    REGISTER_CHARGE_POWER_PCT,
+    REGISTER_DISCHARGE_POWER_PCT,
+    REGISTER_USER_MODE,
     SERVICE_SET_PROFILE,
     USER_MODE_OPTIONS,
     USER_MODES,
@@ -49,6 +52,13 @@ PLATFORMS: list[Platform] = [
 ]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# Action fields per register, in write order, to report partial failures.
+PROFILE_FIELDS = {
+    REGISTER_CHARGE_POWER_PCT: ATTR_CHARGE_POWER_PCT,
+    REGISTER_DISCHARGE_POWER_PCT: ATTR_DISCHARGE_POWER_PCT,
+    REGISTER_USER_MODE: ATTR_USER_MODE,
+}
 
 _legacy_option_warned = False
 
@@ -123,15 +133,21 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
 
         entry = _async_get_service_entry(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
-        ok = await entry.runtime_data.coordinator.async_set_profile(
+        results = await entry.runtime_data.coordinator.async_set_profile(
             charge_power_pct=call.data.get(ATTR_CHARGE_POWER_PCT),
             discharge_power_pct=call.data.get(ATTR_DISCHARGE_POWER_PCT),
             user_mode=_service_user_mode_value(call.data.get(ATTR_USER_MODE)),
         )
-        if not ok:
+        failed = [
+            field
+            for address, field in PROFILE_FIELDS.items()
+            if address in results and not results[address]
+        ]
+        if failed:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="profile_write_failed",
+                translation_placeholders={"failed": ", ".join(failed)},
             )
 
     hass.services.async_register(

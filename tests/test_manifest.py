@@ -30,8 +30,9 @@ def test_manifest_uses_home_assistant_modbus_dependency() -> None:
         "https://github.com/mactron254/home-assistant-saj-as1-modbus/issues"
     )
     assert manifest["codeowners"] == ["@mactron254"]
-    assert manifest["version"] == "2.0.0"
-    assert "pymodbus" not in manifest.get("loggers", [])
+    assert manifest["version"] == "2.0.1"
+    assert manifest["loggers"] == ["pymodbus"]
+    assert manifest["integration_type"] == "device"
 
 
 def test_scan_interval_is_not_user_configurable() -> None:

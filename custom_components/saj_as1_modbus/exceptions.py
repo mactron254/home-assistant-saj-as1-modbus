@@ -28,8 +28,20 @@ class ModbusReadError(SAJModbusException):
     """Raised when the device answers a read with an error or no data."""
 
 
+class ModbusReadRejectedError(ModbusReadError):
+    """Raised when a read is rejected with a deterministic exception code.
+
+    Codes 1-3 (illegal function, address or value) will be returned again on
+    every retry, so retrying only adds traffic on the AIO3 stick.
+    """
+
+
 class ModbusWriteError(SAJModbusException):
     """Raised when a Modbus write fails."""
+
+
+class ModbusWriteRejectedError(ModbusWriteError):
+    """Raised when a write is rejected with a deterministic exception code."""
 
 
 class SAJWriteFailedError(HomeAssistantError):
